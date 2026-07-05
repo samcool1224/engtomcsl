@@ -61,6 +61,25 @@ def build_prompt(english: str, objects: List[dict], k_shot: int = 4,
 # ---------------------------------------------------------------------------
 # Backends
 # ---------------------------------------------------------------------------
+def _make_bnb_config(quantize):
+    """Build a BitsAndBytesConfig for quantize in {None,'4bit','8bit'}. Returns None for full.
+    4bit uses NF4 + double-quant + bf16 compute (the QLoRA-recommended inference setup)."""
+    if quantize in (None, "none", "full"):
+        return None
+    from transformers import BitsAndBytesConfig
+    import torch
+    if quantize == "4bit":
+        return BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=torch.bfloat16,
+        )
+    if quantize == "8bit":
+        return BitsAndBytesConfig(load_in_8bit=True)
+    raise ValueError(f"quantize must be None, '4bit', or '8bit'; got {quantize!r}")
+
+
 class StubBackend:
     """No-GPU backend. If a `gold` map {english: formula_json} is supplied, it returns the
     gold formula (useful to test the pipeline + dialogue policy + eval harness end-to-end
@@ -90,7 +109,12 @@ class LocalBackend:
     schema into a decoding automaton is expensive; doing it per-call is what makes it 'hang').
     """
     def __init__(self, model_name="Qwen/Qwen2.5-7B-Instruct",
-                 max_tokens=1024, temperature=0.0, device="cuda", chat_template=True):
+                 max_tokens=1024, temperature=0.0, device="cuda", chat_template=True,
+                 quantize=None):
+        """
+        quantize: None (full fp16/bf16), "4bit" (NF4, ~5GB for 7B), or "8bit" (~8GB).
+                  4bit is the recommended setting for a 16GB T4/Colab GPU.
+        """
         import outlines
         self.max_tokens = max_tokens
         self.temperature = temperature
@@ -99,29 +123,49 @@ class LocalBackend:
         self._tokenizer = None
         self._api = None
         self.generator = None      # the compiled, reusable constrained generator
+        self.quantize = quantize
+
+        # Build the bitsandbytes quantization config (shared by both API branches).
+        quant_config = _make_bnb_config(quantize)
 
         if hasattr(outlines, "from_transformers"):
             # ---- NEW API (>=1.0, incl. 1.3.x) ----
             from transformers import AutoModelForCausalLM, AutoTokenizer
-            hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map=device)
+            load_kwargs = {"device_map": device}
+            if quant_config is not None:
+                load_kwargs["quantization_config"] = quant_config
+                # with quantization, do NOT also pass a plain device str; device_map handles it
+            hf_model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
             self._tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self._report_footprint(hf_model)
             self.model = outlines.from_transformers(hf_model, self._tokenizer)
             self._api = "new"
-            # Build the reusable Generator ONCE (compiles the schema automaton once).
             from outlines.types import JsonSchema
             self._output_type = JsonSchema(self._schema_str)
             try:
                 from outlines import Generator
                 self.generator = Generator(self.model, self._output_type)
             except Exception:
-                self.generator = None   # fall back to calling model(...) directly
+                self.generator = None
         else:
             # ---- OLD API (<1.0) ----
             from outlines import models, generate
-            self.model = models.transformers(model_name, device=device)
+            model_kwargs = {}
+            if quant_config is not None:
+                model_kwargs["quantization_config"] = quant_config
+            self.model = models.transformers(model_name, device=device,
+                                             model_kwargs=model_kwargs or None)
             self._tokenizer = getattr(self.model, "tokenizer", None)
             self.gen = generate.json(self.model, self._schema_str)
             self._api = "old"
+
+    @staticmethod
+    def _report_footprint(hf_model):
+        try:
+            gb = hf_model.get_memory_footprint() / (1024 ** 3)
+            print(f"   model memory footprint: {gb:.2f} GB")
+        except Exception:
+            pass
 
     def _apply_chat(self, prompt: str) -> str:
         if not self.chat_template or self._tokenizer is None:
