@@ -83,34 +83,67 @@ class StubBackend:
 
 
 class LocalBackend:
-    """GPU backend using modern Outlines (1.2+ / 1.3+)."""
+    """GPU backend: local HF model + JSON-schema-constrained decoding via Outlines.
+
+    Outlines had a breaking API change. This backend AUTO-DETECTS which is installed:
+      * NEW (>=1.0): outlines.from_transformers(hf_model, hf_tokenizer); call model(prompt, schema)
+      * OLD (<1.0):  outlines.models.transformers(name); outlines.generate.json(model, schema)
+
+    It also applies the model's CHAT TEMPLATE to the prompt — Outlines does NOT do this for
+    you, and instruction-tuned models (Qwen2.5-Instruct, Llama-Instruct) produce much worse
+    output without it. Pass chat_template=False to disable.
+    """
     def __init__(self, model_name="Qwen/Qwen2.5-7B-Instruct",
-                 max_tokens=1024, temperature=0.0):
-
+                 max_tokens=1024, temperature=0.0, device="cuda", chat_template=True):
         import outlines
-        import json
-
-        self.model = outlines.models.transformers.model(
-            model_name,
-            device="cuda"
-        )
-
         self.max_tokens = max_tokens
         self.temperature = temperature
+        self.chat_template = chat_template
+        self._schema_str = json.dumps(_SCHEMA)
+        self._tokenizer = None
+        self._api = None
 
-        self.gen = outlines.generate.json(self.model, _SCHEMA)
+        if hasattr(outlines, "from_transformers"):
+            # ---- NEW API (>=1.0) ----
+            from transformers import AutoModelForCausalLM, AutoTokenizer
+            hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map=device)
+            self._tokenizer = AutoTokenizer.from_pretrained(model_name)
+            self.model = outlines.from_transformers(hf_model, self._tokenizer)
+            self._api = "new"
+        else:
+            # ---- OLD API (<1.0) ----
+            from outlines import models, generate
+            self.model = models.transformers(model_name, device=device)
+            self._tokenizer = getattr(self.model, "tokenizer", None)
+            self.gen = generate.json(self.model, self._schema_str)
+            self._api = "old"
+
+    def _apply_chat(self, prompt: str) -> str:
+        if not self.chat_template or self._tokenizer is None:
+            return prompt
+        try:
+            return self._tokenizer.apply_chat_template(
+                [{"role": "user", "content": prompt}],
+                tokenize=False, add_generation_prompt=True)
+        except Exception:
+            return prompt
 
     def generate(self, prompt: str, english: str, objects: List[dict]) -> dict:
-        result = self.gen(
-            prompt,
-            max_tokens=self.max_tokens,
-            temperature=self.temperature
-        )
+        text = self._apply_chat(prompt)
+        if self._api == "new":
+            # new API: call the model with an output type (JSON schema string)
+            from outlines.types import JsonSchema
+            try:
+                out = self.model(text, JsonSchema(self._schema_str),
+                                 max_new_tokens=self.max_tokens)
+            except Exception:
+                # some 1.x builds accept the raw schema string directly
+                out = self.model(text, self._schema_str, max_new_tokens=self.max_tokens)
+        else:
+            # old API: call the prebuilt generator
+            out = self.gen(text, max_tokens=self.max_tokens)
+        return out if isinstance(out, dict) else json.loads(out)
 
-        # Outlines usually already returns dict, but keep safe fallback
-        if isinstance(result, str):
-            return json.loads(result)
-        return result
 
 Backend = Any  # anything with .generate(prompt, english, objects) -> dict
 
