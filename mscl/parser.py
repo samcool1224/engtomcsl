@@ -84,23 +84,20 @@ class StubBackend:
 
 class LocalBackend:
     """GPU backend using modern Outlines (1.2+ / 1.3+)."""
+    def __init__(self, model_name="Qwen/Qwen2.5-7B-Instruct",
+                 max_tokens=1024, temperature=0.0):
 
-    def __init__(
-        self,
-        model_name: str = "Qwen/Qwen2.5-7B-Instruct",
-        max_tokens: int = 1024,
-        temperature: float = 0.0,
-    ):
         import outlines
+        import json
 
-        # modern model API
-        from outlines import models
+        self.model = outlines.models.transformers.model(
+            model_name,
+            device="cuda"
+        )
 
-        self.model = models.transformers(model_name)
         self.max_tokens = max_tokens
         self.temperature = temperature
 
-        # JSON schema-guided generator (NEW API)
         self.gen = outlines.generate.json(self.model, _SCHEMA)
 
     def generate(self, prompt: str, english: str, objects: List[dict]) -> dict:
