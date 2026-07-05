@@ -85,13 +85,9 @@ class StubBackend:
 class LocalBackend:
     """GPU backend: local HF model + JSON-schema-constrained decoding via Outlines.
 
-    Outlines had a breaking API change. This backend AUTO-DETECTS which is installed:
-      * NEW (>=1.0): outlines.from_transformers(hf_model, hf_tokenizer); call model(prompt, schema)
-      * OLD (<1.0):  outlines.models.transformers(name); outlines.generate.json(model, schema)
-
-    It also applies the model's CHAT TEMPLATE to the prompt — Outlines does NOT do this for
-    you, and instruction-tuned models (Qwen2.5-Instruct, Llama-Instruct) produce much worse
-    output without it. Pass chat_template=False to disable.
+    Tuned for Outlines >= 1.3 (the 'new' API). Auto-detects and still supports the old API.
+    Key performance fix: the constrained Generator is built ONCE (compiling a large recursive
+    schema into a decoding automaton is expensive; doing it per-call is what makes it 'hang').
     """
     def __init__(self, model_name="Qwen/Qwen2.5-7B-Instruct",
                  max_tokens=1024, temperature=0.0, device="cuda", chat_template=True):
@@ -102,14 +98,23 @@ class LocalBackend:
         self._schema_str = json.dumps(_SCHEMA)
         self._tokenizer = None
         self._api = None
+        self.generator = None      # the compiled, reusable constrained generator
 
         if hasattr(outlines, "from_transformers"):
-            # ---- NEW API (>=1.0) ----
+            # ---- NEW API (>=1.0, incl. 1.3.x) ----
             from transformers import AutoModelForCausalLM, AutoTokenizer
             hf_model = AutoModelForCausalLM.from_pretrained(model_name, device_map=device)
             self._tokenizer = AutoTokenizer.from_pretrained(model_name)
             self.model = outlines.from_transformers(hf_model, self._tokenizer)
             self._api = "new"
+            # Build the reusable Generator ONCE (compiles the schema automaton once).
+            from outlines.types import JsonSchema
+            self._output_type = JsonSchema(self._schema_str)
+            try:
+                from outlines import Generator
+                self.generator = Generator(self.model, self._output_type)
+            except Exception:
+                self.generator = None   # fall back to calling model(...) directly
         else:
             # ---- OLD API (<1.0) ----
             from outlines import models, generate
@@ -131,16 +136,11 @@ class LocalBackend:
     def generate(self, prompt: str, english: str, objects: List[dict]) -> dict:
         text = self._apply_chat(prompt)
         if self._api == "new":
-            # new API: call the model with an output type (JSON schema string)
-            from outlines.types import JsonSchema
-            try:
-                out = self.model(text, JsonSchema(self._schema_str),
-                                 max_new_tokens=self.max_tokens)
-            except Exception:
-                # some 1.x builds accept the raw schema string directly
-                out = self.model(text, self._schema_str, max_new_tokens=self.max_tokens)
+            if self.generator is not None:
+                out = self.generator(text, max_new_tokens=self.max_tokens)
+            else:
+                out = self.model(text, self._output_type, max_new_tokens=self.max_tokens)
         else:
-            # old API: call the prebuilt generator
             out = self.gen(text, max_tokens=self.max_tokens)
         return out if isinstance(out, dict) else json.loads(out)
 
