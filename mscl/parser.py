@@ -88,7 +88,8 @@ class LocalBackend:
     def __init__(self, model_name: str = "Qwen/Qwen2.5-7B-Instruct",
                  max_tokens: int = 1024, temperature: float = 0.0):
         import outlines                      # noqa: F401  (raises if absent)
-        from outlines import models, generate
+        from outlines import models
+        from outlines.generate import text as generate
         self._models = models
         self._generate = generate
         self.model = models.transformers(model_name)
