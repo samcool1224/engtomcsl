@@ -1,0 +1,63 @@
+# MSCL-SPRING GBNF grammar for grammar-constrained decoding (llama.cpp / compatible).
+# Enforces the JSON AST shape at the token level so a local open model CANNOT emit
+# an out-of-grammar predicate or malformed node. Arity (rel name -> #args) is checked
+# post-hoc by mscl.validate (a CFG can't tie name to arg-count cleanly).
+#
+# Usage (llama.cpp): pass via --grammar-file, or load in Python bindings.
+
+root        ::= "{" ws "\"objects\"" ws ":" ws objects ws "," ws "\"formula\"" ws ":" ws node ws "}"
+
+objects     ::= "[" ws (object (ws "," ws object)*)? ws "]"
+object      ::= "{" ws "\"id\"" ws ":" ws string ws "," ws "\"status\"" ws ":" ws status
+                (ws "," ws "\"type\"" ws ":" ws (string | "null"))?
+                (ws "," ws "\"properties\"" ws ":" ws strarray)?
+                (ws "," ws "\"box\"" ws ":" ws box)? ws "}"
+status      ::= "\"existing\"" | "\"new\""
+box         ::= "[" ws int ws "," ws int ws "," ws int ws "," ws int ws "]"
+strarray    ::= "[" ws (string (ws "," ws string)*)? ws "]"
+
+node        ::= rel | typep | propp | defaultp | notp | andp | orp | choicep
+
+rel         ::= "{" ws "\"node\"" ws ":" ws "\"rel\"" ws "," ws
+                     "\"name\"" ws ":" ws relname ws "," ws
+                     "\"args\"" ws ":" ws idarray
+                     (ws "," ws "\"const\"" ws ":" ws (int | "null"))? ws "}"
+typep       ::= "{" ws "\"node\"" ws ":" ws "\"type\"" ws "," ws
+                     "\"obj\"" ws ":" ws string ws "," ws
+                     "\"type\"" ws ":" ws string ws "}"
+propp       ::= "{" ws "\"node\"" ws ":" ws "\"property\"" ws "," ws
+                     "\"obj\"" ws ":" ws string ws "," ws
+                     "\"value\"" ws ":" ws string ws "}"
+defaultp    ::= "{" ws "\"node\"" ws ":" ws "\"default\"" ws "," ws
+                     "\"obj\"" ws ":" ws string ws "}"
+notp        ::= "{" ws "\"node\"" ws ":" ws "\"not\"" ws "," ws "\"arg\"" ws ":" ws node ws "}"
+andp        ::= "{" ws "\"node\"" ws ":" ws "\"and\"" ws "," ws "\"args\"" ws ":" ws nodearray ws "}"
+orp         ::= "{" ws "\"node\"" ws ":" ws "\"or\"" ws "," ws "\"args\"" ws ":" ws nodearray ws "}"
+choicep     ::= "{" ws "\"node\"" ws ":" ws "\"choice\"" ws "," ws
+                     "\"kind\"" ws ":" ws choicekind ws "," ws
+                     "\"span\"" ws ":" ws string
+                     (ws "," ws "\"emphasis\"" ws ":" ws bool)? ws "," ws
+                     "\"options\"" ws ":" ws optionarray ws "}"
+
+optionarray ::= "[" ws option (ws "," ws option)+ ws "]"
+option      ::= "{" ws "\"prior\"" ws ":" ws number
+                (ws "," ws "\"formula\"" ws ":" ws (node | "null"))?
+                (ws "," ws "\"skip\"" ws ":" ws bool)? ws "}"
+
+nodearray   ::= "[" ws node (ws "," ws node)* ws "]"
+idarray     ::= "[" ws string (ws "," ws string)? ws "]"
+
+relname     ::= "\"above\"" | "\"below\"" | "\"left\"" | "\"right\"" |
+                "\"cabove\"" | "\"cbelow\"" | "\"cleft\"" | "\"cright\"" |
+                "\"wider\"" | "\"narrower\"" | "\"taller\"" | "\"shorter\"" |
+                "\"xeq\"" | "\"yeq\"" | "\"weq\"" | "\"heq\"" |
+                "\"above_value\"" | "\"below_value\"" | "\"left_value\"" | "\"right_value\"" |
+                "\"wider_value\"" | "\"narrower_value\"" | "\"taller_value\"" | "\"shorter_value\"" |
+                "\"xeq_value\"" | "\"yeq_value\"" | "\"weq_value\"" | "\"heq_value\""
+choicekind  ::= "\"direction\"" | "\"offset\"" | "\"reference\"" | "\"scope\"" | "\"unsupported_type\""
+
+string      ::= "\"" ([^"\\] | "\\" .)* "\""
+int         ::= "-"? [0-9]+
+number      ::= "-"? [0-9]+ ("." [0-9]+)?
+bool        ::= "true" | "false"
+ws          ::= [ \t\n]*
