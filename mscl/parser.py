@@ -83,25 +83,37 @@ class StubBackend:
 
 
 class LocalBackend:
-    """GPU backend: local HF model + Outlines grammar-constrained JSON decoding.
-    Import-guarded so this module loads without torch/outlines present."""
-    def __init__(self, model_name: str = "Qwen/Qwen2.5-7B-Instruct",
-                 max_tokens: int = 1024, temperature: float = 0.0):
-        import outlines                      # noqa: F401  (raises if absent)
+    """GPU backend using modern Outlines (1.2+ / 1.3+)."""
+
+    def __init__(
+        self,
+        model_name: str = "Qwen/Qwen2.5-7B-Instruct",
+        max_tokens: int = 1024,
+        temperature: float = 0.0,
+    ):
+        import outlines
+
+        # modern model API
         from outlines import models
-        from outlines.generate import text as generate
-        self._models = models
-        self._generate = generate
+
         self.model = models.transformers(model_name)
         self.max_tokens = max_tokens
         self.temperature = temperature
-        # constrain to the JSON schema -> guaranteed well-formed output
-        self.gen = generate.json(self.model, json.dumps(_SCHEMA))
+
+        # JSON schema-guided generator (NEW API)
+        self.gen = outlines.generate.json(self.model, _SCHEMA)
 
     def generate(self, prompt: str, english: str, objects: List[dict]) -> dict:
-        result = self.gen(prompt, max_tokens=self.max_tokens)
-        return result if isinstance(result, dict) else json.loads(result)
+        result = self.gen(
+            prompt,
+            max_tokens=self.max_tokens,
+            temperature=self.temperature
+        )
 
+        # Outlines usually already returns dict, but keep safe fallback
+        if isinstance(result, str):
+            return json.loads(result)
+        return result
 
 Backend = Any  # anything with .generate(prompt, english, objects) -> dict
 
