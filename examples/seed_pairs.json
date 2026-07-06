@@ -5,107 +5,520 @@
       "id": "fig7_blue_microwave_green_toaster",
       "english": "Add a blue microwave right of the oven, and a green toaster left of the oven and below the sink.",
       "objects": [
-        {"id": "sink", "status": "existing", "type": "sink", "box": [200, 150, 180, 160]},
-        {"id": "oven", "status": "existing", "type": "oven", "box": [450, 500, 220, 260]},
-        {"id": "m", "status": "new", "type": "microwave", "properties": ["blue"]},
-        {"id": "t", "status": "new", "type": "toaster", "properties": ["green"]}
+        {
+          "id": "sink",
+          "status": "existing",
+          "type": "sink",
+          "box": [
+            200,
+            150,
+            180,
+            160
+          ]
+        },
+        {
+          "id": "oven",
+          "status": "existing",
+          "type": "oven",
+          "box": [
+            450,
+            500,
+            220,
+            260
+          ]
+        },
+        {
+          "id": "m",
+          "status": "new",
+          "type": "microwave",
+          "properties": [
+            "blue"
+          ]
+        },
+        {
+          "id": "t",
+          "status": "new",
+          "type": "toaster",
+          "properties": [
+            "green"
+          ]
+        }
       ],
-      "formula": {"node": "and", "args": [
-        {"node": "type", "obj": "m", "type": "microwave"},
-        {"node": "property", "obj": "m", "value": "blue"},
-        {"node": "default", "obj": "m"},
-        {"node": "rel", "name": "cright", "args": ["m", "oven"], "const": null},
-        {"node": "type", "obj": "t", "type": "toaster"},
-        {"node": "property", "obj": "t", "value": "green"},
-        {"node": "default", "obj": "t"},
-        {"node": "rel", "name": "cleft", "args": ["t", "oven"], "const": null},
-        {"node": "rel", "name": "cbelow", "args": ["t", "sink"], "const": null}
-      ]}
+      "formula": {
+        "node": "and",
+        "args": [
+          {
+            "node": "type",
+            "obj": "m",
+            "type": "microwave"
+          },
+          {
+            "node": "property",
+            "obj": "m",
+            "value": "blue"
+          },
+          {
+            "node": "default",
+            "obj": "m"
+          },
+          {
+            "node": "rel",
+            "name": "cright",
+            "args": [
+              "m",
+              "oven"
+            ],
+            "const": null
+          },
+          {
+            "node": "type",
+            "obj": "t",
+            "type": "toaster"
+          },
+          {
+            "node": "property",
+            "obj": "t",
+            "value": "green"
+          },
+          {
+            "node": "default",
+            "obj": "t"
+          },
+          {
+            "node": "rel",
+            "name": "cleft",
+            "args": [
+              "t",
+              "oven"
+            ],
+            "const": null
+          },
+          {
+            "node": "rel",
+            "name": "cbelow",
+            "args": [
+              "t",
+              "sink"
+            ],
+            "const": null
+          }
+        ]
+      }
     },
     {
       "id": "fig8_chair_couch_coffeetable",
       "english": "A cozy brown leather chair completely left of and horizontally aligned with a black-and-white striped couch; a stout coffee table below the chair and to its right. The couch is wider than the chair, the coffee table is wider than the chair, and the couch is taller than the coffee table.",
       "objects": [
-        {"id": "ch", "status": "new", "type": "chair", "properties": ["cozy", "brown", "leather"]},
-        {"id": "co", "status": "new", "type": "couch", "properties": ["black and white striped"]},
-        {"id": "ct", "status": "new", "type": "coffee table", "properties": ["stout"]}
+        {
+          "id": "ch",
+          "status": "new",
+          "type": "chair",
+          "properties": [
+            "cozy",
+            "brown",
+            "leather"
+          ]
+        },
+        {
+          "id": "co",
+          "status": "new",
+          "type": "couch",
+          "properties": [
+            "black and white striped"
+          ]
+        },
+        {
+          "id": "ct",
+          "status": "new",
+          "type": "dining table",
+          "properties": [
+            "stout"
+          ]
+        }
       ],
-      "formula": {"node": "and", "args": [
-        {"node": "type", "obj": "ch", "type": "chair"},
-        {"node": "type", "obj": "co", "type": "couch"},
-        {"node": "type", "obj": "ct", "type": "dining table"},
-        {"node": "default", "obj": "ch"},
-        {"node": "default", "obj": "co"},
-        {"node": "default", "obj": "ct"},
-        {"node": "rel", "name": "cleft", "args": ["ch", "co"], "const": null},
-        {"node": "rel", "name": "xeq", "args": ["ch", "co"], "const": null},
-        {"node": "rel", "name": "below", "args": ["ct", "ch"], "const": null},
-        {"node": "rel", "name": "right", "args": ["ct", "ch"], "const": null},
-        {"node": "rel", "name": "wider", "args": ["co", "ch"], "const": null},
-        {"node": "rel", "name": "wider", "args": ["ct", "ch"], "const": null},
-        {"node": "rel", "name": "taller", "args": ["co", "ct"], "const": null}
-      ]}
+      "formula": {
+        "node": "and",
+        "args": [
+          {
+            "node": "type",
+            "obj": "ch",
+            "type": "chair"
+          },
+          {
+            "node": "type",
+            "obj": "co",
+            "type": "couch"
+          },
+          {
+            "node": "type",
+            "obj": "ct",
+            "type": "dining table"
+          },
+          {
+            "node": "default",
+            "obj": "ch"
+          },
+          {
+            "node": "default",
+            "obj": "co"
+          },
+          {
+            "node": "default",
+            "obj": "ct"
+          },
+          {
+            "node": "rel",
+            "name": "cleft",
+            "args": [
+              "ch",
+              "co"
+            ],
+            "const": null
+          },
+          {
+            "node": "rel",
+            "name": "xeq",
+            "args": [
+              "ch",
+              "co"
+            ],
+            "const": null
+          },
+          {
+            "node": "rel",
+            "name": "below",
+            "args": [
+              "ct",
+              "ch"
+            ],
+            "const": null
+          },
+          {
+            "node": "rel",
+            "name": "right",
+            "args": [
+              "ct",
+              "ch"
+            ],
+            "const": null
+          },
+          {
+            "node": "rel",
+            "name": "wider",
+            "args": [
+              "co",
+              "ch"
+            ],
+            "const": null
+          },
+          {
+            "node": "rel",
+            "name": "wider",
+            "args": [
+              "ct",
+              "ch"
+            ],
+            "const": null
+          },
+          {
+            "node": "rel",
+            "name": "taller",
+            "args": [
+              "co",
+              "ct"
+            ],
+            "const": null
+          }
+        ]
+      }
     },
     {
       "id": "fig10_blue_microwave_above_black_oven",
       "english": "A blue microwave above a black oven.",
       "objects": [
-        {"id": "m", "status": "new", "type": "microwave", "properties": ["blue"]},
-        {"id": "ov", "status": "new", "type": "oven", "properties": ["black"]}
+        {
+          "id": "m",
+          "status": "new",
+          "type": "microwave",
+          "properties": [
+            "blue"
+          ]
+        },
+        {
+          "id": "ov",
+          "status": "new",
+          "type": "oven",
+          "properties": [
+            "black"
+          ]
+        }
       ],
-      "formula": {"node": "and", "args": [
-        {"node": "type", "obj": "m", "type": "microwave"},
-        {"node": "property", "obj": "m", "value": "blue"},
-        {"node": "type", "obj": "ov", "type": "oven"},
-        {"node": "property", "obj": "ov", "value": "black"},
-        {"node": "default", "obj": "m"},
-        {"node": "default", "obj": "ov"},
-        {"node": "rel", "name": "cabove", "args": ["m", "ov"], "const": null}
-      ]}
+      "formula": {
+        "node": "and",
+        "args": [
+          {
+            "node": "type",
+            "obj": "m",
+            "type": "microwave"
+          },
+          {
+            "node": "property",
+            "obj": "m",
+            "value": "blue"
+          },
+          {
+            "node": "type",
+            "obj": "ov",
+            "type": "oven"
+          },
+          {
+            "node": "property",
+            "obj": "ov",
+            "value": "black"
+          },
+          {
+            "node": "default",
+            "obj": "m"
+          },
+          {
+            "node": "default",
+            "obj": "ov"
+          },
+          {
+            "node": "rel",
+            "name": "cabove",
+            "args": [
+              "m",
+              "ov"
+            ],
+            "const": null
+          }
+        ]
+      }
     },
     {
       "id": "fig8_table_below_tv_sizes",
       "english": "A big wooden kitchen table surrounded by chairs is completely below a big flatscreen TV, and the TV is completely to the left of the table. The table is wider than 40% of the image and taller than 30% of the image. The TV is wider than 30% of the image.",
       "objects": [
-        {"id": "tb", "status": "new", "type": "dining table", "properties": ["big", "wooden", "surrounded by chairs"]},
-        {"id": "tv", "status": "new", "type": "TV", "properties": ["big", "flatscreen", "wall-mounted"]}
+        {
+          "id": "tb",
+          "status": "new",
+          "type": "dining table",
+          "properties": [
+            "big",
+            "wooden",
+            "surrounded by chairs"
+          ]
+        },
+        {
+          "id": "tv",
+          "status": "new",
+          "type": "TV",
+          "properties": [
+            "big",
+            "flatscreen",
+            "wall-mounted"
+          ]
+        }
       ],
-      "formula": {"node": "and", "args": [
-        {"node": "type", "obj": "tb", "type": "dining table"},
-        {"node": "type", "obj": "tv", "type": "TV"},
-        {"node": "default", "obj": "tb"},
-        {"node": "default", "obj": "tv"},
-        {"node": "rel", "name": "cbelow", "args": ["tb", "tv"], "const": null},
-        {"node": "rel", "name": "cleft", "args": ["tv", "tb"], "const": null},
-        {"node": "rel", "name": "wider_value", "args": ["tb"], "const": 400},
-        {"node": "rel", "name": "taller_value", "args": ["tb"], "const": 300},
-        {"node": "rel", "name": "wider_value", "args": ["tv"], "const": 300}
-      ]}
+      "formula": {
+        "node": "and",
+        "args": [
+          {
+            "node": "type",
+            "obj": "tb",
+            "type": "dining table"
+          },
+          {
+            "node": "type",
+            "obj": "tv",
+            "type": "TV"
+          },
+          {
+            "node": "default",
+            "obj": "tb"
+          },
+          {
+            "node": "default",
+            "obj": "tv"
+          },
+          {
+            "node": "rel",
+            "name": "cbelow",
+            "args": [
+              "tb",
+              "tv"
+            ],
+            "const": null
+          },
+          {
+            "node": "rel",
+            "name": "cleft",
+            "args": [
+              "tv",
+              "tb"
+            ],
+            "const": null
+          },
+          {
+            "node": "rel",
+            "name": "wider_value",
+            "args": [
+              "tb"
+            ],
+            "const": 400
+          },
+          {
+            "node": "rel",
+            "name": "taller_value",
+            "args": [
+              "tb"
+            ],
+            "const": 300
+          },
+          {
+            "node": "rel",
+            "name": "wider_value",
+            "args": [
+              "tv"
+            ],
+            "const": 300
+          }
+        ]
+      }
     },
     {
       "id": "ambiguous_lamp_by_couch",
       "english": "Put a lamp by the couch.",
       "_note": "AMBIGUOUS exemplar: shows the three CHOICE kinds the parser should emit.",
       "objects": [
-        {"id": "c0", "status": "existing", "type": "couch", "box": [400, 400, 300, 200]},
-        {"id": "L", "status": "new", "type": null}
+        {
+          "id": "c0",
+          "status": "existing",
+          "type": "couch",
+          "box": [
+            400,
+            400,
+            300,
+            200
+          ]
+        },
+        {
+          "id": "L",
+          "status": "new",
+          "type": null
+        }
       ],
-      "formula": {"node": "and", "args": [
-        {"node": "choice", "kind": "unsupported_type", "span": "lamp", "emphasis": false, "options": [
-          {"prior": 0.5, "formula": {"node": "type", "obj": "L", "type": "potted plant"}},
-          {"prior": 0.3, "formula": {"node": "type", "obj": "L", "type": "mirror"}},
-          {"prior": 0.2, "formula": null, "skip": true}
-        ]},
-        {"node": "choice", "kind": "direction", "span": "by the couch", "emphasis": false, "options": [
-          {"prior": 0.4, "formula": {"node": "rel", "name": "cleft", "args": ["L", "c0"], "const": null}},
-          {"prior": 0.4, "formula": {"node": "rel", "name": "cright", "args": ["L", "c0"], "const": null}},
-          {"prior": 0.2, "formula": {"node": "rel", "name": "cabove", "args": ["L", "c0"], "const": null}}
-        ]},
-        {"node": "choice", "kind": "offset", "span": "by", "emphasis": false, "options": [
-          {"prior": 0.8, "formula": {"node": "rel", "name": "cleft", "args": ["L", "c0"], "const": 0}},
-          {"prior": 0.2, "formula": {"node": "rel", "name": "cleft", "args": ["L", "c0"], "const": 200}}
-        ]}
-      ]}
+      "formula": {
+        "node": "and",
+        "args": [
+          {
+            "node": "choice",
+            "kind": "unsupported_type",
+            "span": "lamp",
+            "emphasis": false,
+            "options": [
+              {
+                "prior": 0.5,
+                "formula": {
+                  "node": "type",
+                  "obj": "L",
+                  "type": "potted plant"
+                }
+              },
+              {
+                "prior": 0.3,
+                "formula": {
+                  "node": "type",
+                  "obj": "L",
+                  "type": "mirror"
+                }
+              },
+              {
+                "prior": 0.2,
+                "formula": null,
+                "skip": true
+              }
+            ]
+          },
+          {
+            "node": "choice",
+            "kind": "direction",
+            "span": "by the couch",
+            "emphasis": false,
+            "options": [
+              {
+                "prior": 0.4,
+                "formula": {
+                  "node": "rel",
+                  "name": "cleft",
+                  "args": [
+                    "L",
+                    "c0"
+                  ],
+                  "const": null
+                }
+              },
+              {
+                "prior": 0.4,
+                "formula": {
+                  "node": "rel",
+                  "name": "cright",
+                  "args": [
+                    "L",
+                    "c0"
+                  ],
+                  "const": null
+                }
+              },
+              {
+                "prior": 0.2,
+                "formula": {
+                  "node": "rel",
+                  "name": "cabove",
+                  "args": [
+                    "L",
+                    "c0"
+                  ],
+                  "const": null
+                }
+              }
+            ]
+          },
+          {
+            "node": "choice",
+            "kind": "offset",
+            "span": "by",
+            "emphasis": false,
+            "options": [
+              {
+                "prior": 0.8,
+                "formula": {
+                  "node": "rel",
+                  "name": "cleft",
+                  "args": [
+                    "L",
+                    "c0"
+                  ],
+                  "const": 0
+                }
+              },
+              {
+                "prior": 0.2,
+                "formula": {
+                  "node": "rel",
+                  "name": "cleft",
+                  "args": [
+                    "L",
+                    "c0"
+                  ],
+                  "const": 200
+                }
+              }
+            ]
+          }
+        ]
+      }
     }
   ]
 }
