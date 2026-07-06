@@ -21,17 +21,32 @@ _SCHEMA = json_schema()
 
 SYSTEM = """You translate an interior-design instruction in English into MSCL-SPRING JSON.
 
-Rules:
-- Output ONE JSON object: {"objects":[...], "formula": <node>}. No prose.
-- Object types MUST be one of the 17 SPRING types. If the user names something else,
-  emit a CHOICE node with kind "unsupported_type" offering the nearest types and a SKIP.
+Output ONE JSON object: {"objects":[...], "formula": <node>}. No prose, no markdown.
+
+THE ONLY LEGAL OBJECT TYPES (use these EXACT strings, including spaces and capitalization):
+  "chair", "couch", "potted plant", "bed", "mirror", "dining table", "window", "desk",
+  "toilet", "door", "TV", "microwave", "oven", "toaster", "sink", "refrigerator", "blender"
+- Never invent a type. "plant" is WRONG; the legal type is "potted plant". "tv" is WRONG; use "TV".
+- If the user names an object NOT in this list (e.g. "lamp", "fan", "rug", "clock"), you MUST NOT
+  emit type(o,"lamp"). Instead emit a CHOICE with kind "unsupported_type" offering the 2 nearest
+  legal types and a SKIP option, e.g.:
+    {"node":"choice","kind":"unsupported_type","span":"lamp","options":[
+       {"prior":0.5,"formula":{"node":"type","obj":"o0","type":"potted plant"}},
+       {"prior":0.3,"formula":{"node":"type","obj":"o0","type":"mirror"}},
+       {"prior":0.2,"formula":null,"skip":true}]}
+
+EMIT A CHOICE WHENEVER THE ENGLISH IS AMBIGUOUS — do NOT silently pick one reading:
+- Vague direction ("by", "near", "next to" the X): kind "direction", options over cleft/cright/cabove/cbelow.
+- Emphasized distance ("WELL to the left", "FAR above"): kind "offset", set "emphasis":true, options
+  over the same relation with const 0 vs a larger const (e.g. 200).
+- "the X" when two detected objects are type X: kind "reference", options over the candidate ids.
+Each CHOICE has 2+ options with a "prior" per option (priors sum to ~1) and a "span" (the source words).
+
+Spatial relations (use these names only): above below left right cabove cbelow cleft cright
+wider narrower taller shorter xeq yeq weq heq, plus the *_value forms (e.g. right_value, wider_value).
+- "completely/fully left/right/above/below" -> cleft/cright/cabove/cbelow.
 - Bind references to the given detected objects when they match by type (and position).
-- Spatial relations use these names only: above below left right cabove cbelow cleft
-  cright wider narrower taller shorter xeq yeq weq heq, and the *_value forms.
-- When the English is genuinely ambiguous, DO NOT guess silently — emit a CHOICE node with
-  the right kind (direction / offset / reference / scope / unsupported_type), candidate
-  option formulas, and a prior weight per option (summing to 1).
-- Integer offsets are in per-mille (0..1000) of image width/height.
+- Every NEW object needs a type() and a default(). Integer offsets are per-mille (0..1000).
 """
 
 
