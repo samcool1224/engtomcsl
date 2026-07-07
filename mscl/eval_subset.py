@@ -44,6 +44,7 @@ def run_diagnostic(backend, test_samples, n=12, dump_misses=True):
         except Exception as e:
             stats["error"] += 1
             print(f"[{i}/{n}] ERROR {type(e).__name__:15s} {time.time()-t0:5.1f}s :: {english[:60]}")
+            print(f"      ERROR MSG: {e}")
             if is_ambig: ambig_total += 1
             else: unamb_total += 1
             continue
