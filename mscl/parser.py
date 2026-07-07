@@ -125,10 +125,12 @@ class LocalBackend:
     """
     def __init__(self, model_name="Qwen/Qwen2.5-7B-Instruct",
                  max_tokens=1024, temperature=0.0, device="cuda", chat_template=True,
-                 quantize=None):
+                 quantize=None, adapter_path=None):
         """
-        quantize: None (full fp16/bf16), "4bit" (NF4, ~5GB for 7B), or "8bit" (~8GB).
-                  4bit is the recommended setting for a 16GB T4/Colab GPU.
+        quantize:     None (full fp16/bf16), "4bit" (NF4, ~5GB for 7B), or "8bit" (~8GB).
+        adapter_path: path to LoRA adapters from finetune_lora.py. When set, the adapters
+                      are merged onto the base model AND parse() should use the compact
+                      fine-tune prompt (see examples/finetune_lora.py: ft_prompt).
         """
         import outlines
         self.max_tokens = max_tokens
@@ -139,6 +141,7 @@ class LocalBackend:
         self._api = None
         self.generator = None      # the compiled, reusable constrained generator
         self.quantize = quantize
+        self.adapter_path = adapter_path
 
         # Build the bitsandbytes quantization config (shared by both API branches).
         quant_config = _make_bnb_config(quantize)
@@ -149,8 +152,11 @@ class LocalBackend:
             load_kwargs = {"device_map": device}
             if quant_config is not None:
                 load_kwargs["quantization_config"] = quant_config
-                # with quantization, do NOT also pass a plain device str; device_map handles it
             hf_model = AutoModelForCausalLM.from_pretrained(model_name, **load_kwargs)
+            if adapter_path:
+                from peft import PeftModel
+                hf_model = PeftModel.from_pretrained(hf_model, adapter_path)
+                print(f"   loaded LoRA adapters from {adapter_path}")
             self._tokenizer = AutoTokenizer.from_pretrained(model_name)
             self._report_footprint(hf_model)
             self.model = outlines.from_transformers(hf_model, self._tokenizer)
@@ -209,7 +215,16 @@ Backend = Any  # anything with .generate(prompt, english, objects) -> dict
 
 def parse(english: str, objects: List[dict], backend: Backend,
           k_shot: int = 4) -> Spec:
-    prompt = build_prompt(english, objects, k_shot=k_shot)
+    # Fine-tuned backends were trained on the COMPACT prompt (no few-shot, no schema);
+    # using it makes inference faster and matches the training distribution.
+    if getattr(backend, "adapter_path", None):
+        import importlib.util, os as _os
+        _p = _os.path.join(HERE, "..", "examples", "finetune_lora.py")
+        _spec = importlib.util.spec_from_file_location("finetune_lora", _p)
+        _m = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_m)
+        prompt = _m.ft_prompt(english, objects)
+    else:
+        prompt = build_prompt(english, objects, k_shot=k_shot)
     raw = backend.generate(prompt, english, objects)
     spec = spec_from_json(raw)
     validate(spec)            # raises on malformed; grammar-decoding should prevent this
