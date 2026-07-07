@@ -46,13 +46,24 @@ Spatial relations (use these names only): above below left right cabove cbelow c
 wider narrower taller shorter xeq yeq weq heq, plus the *_value forms (e.g. right_value, wider_value).
 - "completely/fully left/right/above/below" -> cleft/cright/cabove/cbelow.
 - Bind references to the given detected objects when they match by type (and position).
+- EXISTING objects (status "existing"): never emit type(), property(), or default() for them —
+  they are already known. Only NEW objects get type() and default().
+- NEVER express proximity ("near","by","beside") as two opposite relations (e.g. left AND right
+  of the same object — that is contradictory). Vague proximity = a "direction" CHOICE.
 - Every NEW object needs a type() and a default(). Integer offsets are per-mille (0..1000).
 """
 
 
 def _exemplars(k: int = 4) -> List[dict]:
+    """Return a BALANCED mix of exemplars: half unambiguous, half CHOICE-bearing.
+    (The original pairs[:k] contained zero CHOICE examples, which is why the model
+    never emitted CHOICE — few-shot models imitate examples over prose rules.)"""
     pairs = json.load(open(os.path.join(HERE, "..", "examples", "seed_pairs.json")))["pairs"]
-    return pairs[:k]
+    ambig = [p for p in pairs if '"choice"' in json.dumps(p["formula"])]
+    unamb = [p for p in pairs if '"choice"' not in json.dumps(p["formula"])]
+    n_ambig = max(1, k // 2)
+    n_unamb = k - n_ambig
+    return unamb[:n_unamb] + ambig[:n_ambig]
 
 
 def build_prompt(english: str, objects: List[dict], k_shot: int = 4,
