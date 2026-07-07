@@ -213,14 +213,14 @@ def gen_ambiguous_direction(rng: random.Random, paraphrase: ParaphraseHook = Non
     new = [o for o in objs if o.status == "new"][0]
     dirs = ["cleft", "cright", "cabove", "cbelow"]
     rng.shuffle(dirs)
+    vague = rng.choice(VAGUE_DIR)
     opts = [Option(round(p, 2), Relation(d, [new.id, ex.id]))
             for d, p in zip(dirs, _priors(rng, len(dirs)))]
-    choice = Choice("direction", f"by the {ex.type}", opts)
+    choice = Choice("direction", f"{vague} the {ex.type}", opts)
     conj = [TypePred(new.id, new.type), Default(new.id), choice]
     for p in new.properties:
         conj.append(PropertyPred(new.id, p))
     spec = Spec(objs, And(conj))
-    vague = rng.choice(VAGUE_DIR)
     english = f"Put {_noun(new)} {vague} the {ex.type}."
     return _finish(spec, english, True, {"kind": "ambiguous_direction"}, paraphrase)
 
@@ -235,7 +235,10 @@ def gen_ambiguous_offset(rng: random.Random, paraphrase: ParaphraseHook = None) 
     opts = [Option(0.4, Relation(d, [new.id, ex.id], 0)),
             Option(0.6, Relation(d, [new.id, ex.id], big))]
     choice = Choice("offset", "well", opts, emphasis=True)
-    spec = Spec(objs, And([TypePred(new.id, new.type), Default(new.id), choice]))
+    conj = [TypePred(new.id, new.type), Default(new.id), choice]
+    for p in new.properties:                      # gold must match the English's properties
+        conj.append(PropertyPred(new.id, p))
+    spec = Spec(objs, And(conj))
     dirword = {"cleft": "well to the left of", "cright": "well to the right of",
                "cabove": "well above", "cbelow": "well below"}[d]
     english = f"Put {_noun(new)} {dirword} the {ex.type}."
