@@ -26,6 +26,7 @@ from typing import Any, Dict
 from .ast import (Spec, Obj, Atom, Relation, TypePred, PropertyPred, Default,
                   Not, And, Or, Choice, Option, Formula, CHOICE_KINDS)
 from .relations import ALL_RELATIONS, arity
+from .profile import SPRING_TYPES as _SPRING_TYPES
 
 
 def spec_from_json(data: Dict[str, Any]) -> Spec:
@@ -147,7 +148,7 @@ def json_schema() -> Dict[str, Any]:
                      "additionalProperties": False,
                      "properties": {"node": {"const": "type"},
                                     "obj": {"type": "string"},
-                                    "type": {"type": "string"}}},
+                                    "type": {"enum": list(_SPRING_TYPES)}}},
                     {"type": "object", "required": ["node", "obj", "value"],
                      "additionalProperties": False,
                      "properties": {"node": {"const": "property"},
