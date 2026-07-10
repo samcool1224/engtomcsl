@@ -84,8 +84,11 @@ def run_diagnostic(backend, test_samples, n=12, dump_misses=True, log_file="run_
             log_print(f"[{i}/{n}] {tag:9s} {time.time()-t0:5.1f}s :: {english[:55]}{marker}")
 
             if not ok and dump_misses:
-                log_print(f"      GOLD: {json.dumps(gold_formula)[:250]}")
-                log_print(f"      PRED: {json.dumps(pred_json)[:250]}")
+                log_print("      GOLD:")
+                log_print(json.dumps(gold_formula, indent=2))
+                
+                log_print("      PRED:")
+                log_print(json.dumps(pred_json, indent=2))
 
         log_print("\n===== DIAGNOSTIC SUMMARY =====")
         total = len(subset)
