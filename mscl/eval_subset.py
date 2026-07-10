@@ -1,3 +1,4 @@
+
 """Diagnostic subset eval: accuracy + CHOICE-emission tally + miss dumps.
 
 Run AFTER `backend` and `test` exist in your notebook (or run standalone; it will
@@ -53,7 +54,7 @@ def run_diagnostic(backend, test_samples, n=12, dump_misses=True, log_file="run_
                 pred = parse_with_repair(english, objects, backend, retries=1)
             except Exception as e:
                 stats["error"] += 1
-                log_print(f"[{i}/{n}] ERROR {type(e).__name__:15s} {time.time()-t0:5.1f}s :: {english[:60]}")
+                log_print(f"[{i}/{n}] ERROR {type(e).__name__:15s} {time.time()-t0:5.1f}s :: {english}")
                 log_print(f"      ERROR MSG: {e}")
                 if is_ambig: ambig_total += 1
                 else: unamb_total += 1
@@ -81,9 +82,9 @@ def run_diagnostic(backend, test_samples, n=12, dump_misses=True, log_file="run_
             marker = ""
             if is_ambig:
                 marker = f"  [ambig; CHOICE emitted: {'YES' if pred_has_choice else 'NO'}]"
-            log_print(f"[{i}/{n}] {tag:9s} {time.time()-t0:5.1f}s :: {english[:55]}{marker}")
+            log_print(f"[{i}/{n}] {tag:9s} {time.time()-t0:5.1f}s :: {english}{marker}")
 
-            if not ok and dump_misses:
+            if dump_misses:
                 log_print("      GOLD:")
                 log_print(json.dumps(gold_formula, indent=2))
                 
