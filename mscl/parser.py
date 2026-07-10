@@ -36,28 +36,63 @@ THE ONLY LEGAL OBJECT TYPES (use these EXACT strings, including spaces and capit
        {"prior":0.2,"formula":null,"skip":true}]}
 
 EMIT A CHOICE WHENEVER THE ENGLISH IS AMBIGUOUS — do NOT silently pick one reading:
-- Vague direction ("by", "near", "next to" the X): kind "direction", options over cleft/cright/cabove/cbelow.
-- Emphasized distance ("WELL to the left", "FAR above"): kind "offset", set "emphasis":true, options
-  over the same relation with const 0 vs a larger const (e.g. 200).
-- "the X" when two detected objects are type X: kind "reference", options over the candidate ids.
+- Vague direction ("by", "near", "next to", "beside" the X): kind "direction", 3-4 options over
+  cleft/cright/cabove/cbelow. Do NOT emit a plain relation for these words; do NOT use "or".
+- Emphasized distance — the words "well", "far", "way" before a direction (e.g. "WELL to the left",
+  "FAR above", "well below"): kind "offset", "emphasis":true, exactly TWO options over the SAME
+  relation: one with "const":0 and one with a larger "const" (e.g. 300). NEVER just pick a number
+  yourself for these — "well"/"far"/"way" ALWAYS means an offset CHOICE.
+- "the X" when TWO OR MORE detected objects have type X: kind "reference", options are the same
+  relation applied to each candidate object id (e.g. cleft to e0 vs cleft to e1). If you find two
+  matching objects, you MUST wrap them in a reference CHOICE — never AND them together.
 Each CHOICE has 2+ options with a "prior" per option (priors sum to ~1) and a "span" (the source words).
 
 Spatial relations (use these names only): above below left right cabove cbelow cleft cright
 wider narrower taller shorter xeq yeq weq heq, plus the *_value forms (e.g. right_value, wider_value).
 - "completely/fully left/right/above/below" -> cleft/cright/cabove/cbelow.
+- The *_value forms are RELATIONS, not properties. "taller than 282 per-mille" ->
+  {"node":"rel","name":"taller_value","args":["o0"],"const":282}. NEVER write
+  property(o,"taller_value") — property() is ONLY for adjectives like "blue", "wooden", "metal".
+- Emit each spatial relation ONCE. Do NOT restate the same relationship two ways (e.g. do NOT emit
+  both cabove(a,b) AND cbelow(b,a) — pick the single relation that matches the sentence's subject).
+  "A above B" -> ONE relation: above(a,b) (or cabove if "completely/fully"). Nothing else.
 - Bind references to the given detected objects when they match by type (and position).
 - EXISTING objects (status "existing"): never emit type(), property(), or default() for them —
   they are already known. Only NEW objects get type() and default().
-- NEVER express proximity ("near","by","beside") as two opposite relations (e.g. left AND right
-  of the same object — that is contradictory). Vague proximity = a "direction" CHOICE.
 - Every NEW object needs a type() and a default(). Integer offsets are per-mille (0..1000).
 """
 
 
-def _exemplars(k: int = 4) -> List[dict]:
-    """Return a BALANCED mix of exemplars: half unambiguous, half CHOICE-bearing.
-    (The original pairs[:k] contained zero CHOICE examples, which is why the model
-    never emitted CHOICE — few-shot models imitate examples over prose rules.)"""
+def _exemplars(k: int = 6) -> List[dict]:
+    """Return a DIVERSE, coverage-guaranteed exemplar set. Few-shot models imitate examples
+    far more than prose rules, so we ensure each key pattern is demonstrated at least once:
+    an unambiguous multi-object, a *_value relation, an offset-emphasis CHOICE, a direction
+    CHOICE, a reference CHOICE, and an unsupported_type CHOICE (as many as k allows)."""
+    pairs = json.load(open(os.path.join(HERE, "..", "examples", "seed_pairs.json")))["pairs"]
+    by_id = {p["id"]: p for p in pairs}
+    # priority coverage order (id -> what it teaches)
+    preferred = [
+        "fig7_blue_microwave_green_toaster",   # unambiguous multi-object + properties
+        "ambiguous_offset_emphasis",           # 'well' -> offset CHOICE (P1)
+        "value_relation_example",              # *_value are relations not properties (P4)
+        "ambiguous_lamp_by_couch",             # direction + unsupported_type CHOICE
+        "ambiguous_reference_example",         # 2 same-type -> reference CHOICE (P2)
+        "ambiguous_unsupported_clock",         # unsupported_type CHOICE
+        "fig8_chair_couch_coffeetable",        # more unambiguous relations
+    ]
+    picked = [by_id[i] for i in preferred if i in by_id][:k]
+    if len(picked) >= k:
+        return picked
+    # top up with any remaining
+    for p in pairs:
+        if p not in picked:
+            picked.append(p)
+        if len(picked) >= k:
+            break
+    return picked
+
+
+def _exemplars_legacy(k: int = 4) -> List[dict]:
     pairs = json.load(open(os.path.join(HERE, "..", "examples", "seed_pairs.json")))["pairs"]
     ambig = [p for p in pairs if '"choice"' in json.dumps(p["formula"])]
     unamb = [p for p in pairs if '"choice"' not in json.dumps(p["formula"])]
@@ -66,7 +101,7 @@ def _exemplars(k: int = 4) -> List[dict]:
     return unamb[:n_unamb] + ambig[:n_ambig]
 
 
-def build_prompt(english: str, objects: List[dict], k_shot: int = 4,
+def build_prompt(english: str, objects: List[dict], k_shot: int = 6,
                  include_schema: bool = True) -> str:
     parts = [SYSTEM]
     if include_schema:
@@ -225,7 +260,7 @@ Backend = Any  # anything with .generate(prompt, english, objects) -> dict
 
 
 def parse(english: str, objects: List[dict], backend: Backend,
-          k_shot: int = 4) -> Spec:
+          k_shot: int = 6) -> Spec:
     # Fine-tuned backends were trained on the COMPACT prompt (no few-shot, no schema);
     # using it makes inference faster and matches the training distribution.
     if getattr(backend, "adapter_path", None):
@@ -237,6 +272,8 @@ def parse(english: str, objects: List[dict], backend: Backend,
     else:
         prompt = build_prompt(english, objects, k_shot=k_shot)
     raw = backend.generate(prompt, english, objects)
+    from .json_io import dedupe_relations
+    raw = dedupe_relations(raw)      # strip duplicate / mirror-redundant relations (pattern P3)
     spec = spec_from_json(raw)
     validate(spec)            # raises on malformed; grammar-decoding should prevent this
     return spec
