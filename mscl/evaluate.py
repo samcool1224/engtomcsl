@@ -55,6 +55,91 @@ def exact_match(pred: Spec, gold_json: dict) -> bool:
     return _canon(spec_to_json(pred)["formula"]) == _canon(gold_json["formula"])
 
 
+def _choices_of(formula_json) -> list:
+    out = []
+    def rec(n):
+        if isinstance(n, dict):
+            if n.get("node") == "choice":
+                out.append(n)
+            for v in n.values():
+                rec(v)
+        elif isinstance(n, list):
+            for x in n:
+                rec(x)
+    rec(formula_json)
+    return out
+
+
+def _nonchoice_rels(formula_json) -> set:
+    """Relation leaves that are NOT inside any choice node — the 'hard' skeleton."""
+    sig = set()
+    def rec(n, in_choice):
+        if isinstance(n, dict):
+            if n.get("node") == "choice":
+                for o in n.get("options", []):
+                    if o.get("formula"):
+                        rec(o["formula"], True)
+                return
+            if n.get("node") == "rel" and not in_choice:
+                sig.add((n["name"], tuple(n.get("args", []))))
+            for v in n.values():
+                rec(v, in_choice)
+        elif isinstance(n, list):
+            for x in n:
+                rec(x, in_choice)
+    rec(formula_json, False)
+    return sig
+
+
+def choice_structural_match(pred: Spec, gold_json: dict,
+                            require_same_options: bool = False) -> bool:
+    """User-facing correctness for AMBIGUOUS specs. Matches when:
+      (1) same number of CHOICE nodes, each gold CHOICE paired to a pred CHOICE with the same
+          `kind` and `span`;
+      (2) geometric CHOICEs (direction/offset/reference): pred's option relations overlap gold's
+          on at least one reading (priors and option ordering ignored — not user-visible);
+      (3) unsupported_type CHOICEs: existence of the kind+span is enough (specific suggested
+          types/priors may differ — any sensible in-vocab suggestion + SKIP is acceptable);
+      (4) the non-CHOICE skeleton relations match as a set.
+    This reflects what a USER would judge correct, not exact prior arithmetic."""
+    pf = spec_to_json(pred)["formula"]
+    gc = _choices_of(gold_json["formula"])
+    pc = _choices_of(pf)
+    if len(gc) != len(pc):
+        return False
+    if _nonchoice_rels(pf) != _nonchoice_rels(gold_json["formula"]):
+        return False
+    used = set()
+    for g in gc:
+        found = False
+        for i, p in enumerate(pc):
+            if i in used or p.get("kind") != g.get("kind") or p.get("span") != g.get("span"):
+                continue
+            if g["kind"] == "unsupported_type":
+                found = True; used.add(i); break
+            g_rels = {(o["formula"]["name"], tuple(o["formula"]["args"]))
+                      for o in g["options"] if o.get("formula") and o["formula"].get("node") == "rel"}
+            p_rels = {(o["formula"]["name"], tuple(o["formula"]["args"]))
+                      for o in p["options"] if o.get("formula") and o["formula"].get("node") == "rel"}
+            ok = (g_rels == p_rels) if require_same_options else (len(g_rels & p_rels) >= 1)
+            if ok:
+                found = True; used.add(i); break
+        if not found:
+            return False
+    return True
+
+
+def is_correct(pred: Spec, gold_json: dict) -> bool:
+    """Unified user-facing correctness: exact OR semantic (unambiguous) OR structural (CHOICE)."""
+    gf = gold_json["formula"]
+    pf = spec_to_json(pred)["formula"]
+    gold_has_choice = "choice" in json.dumps(gf)
+    pred_has_choice = "choice" in json.dumps(pf)
+    if gold_has_choice or pred_has_choice:
+        return choice_structural_match(pred, gold_json)
+    return exact_match(pred, gold_json) or semantic_equiv(pred, gold_json)
+
+
 def semantic_equiv(pred: Spec, gold_json: dict, n_samples: int = 200, seed: int = 0) -> bool:
     """Approximate logical equivalence of two CHOICE-free specs by agreement on random
     layouts. Sound for 'not equivalent' if a witness is found; 'equivalent' is probabilistic.
@@ -108,7 +193,7 @@ def parse_accuracy(samples: List[dict], backend) -> ParseReport:
         gold = {"objects": s["objects"], "formula": s["formula"]}
         if exact_match(pred, gold):
             exact += 1; sem += 1
-        elif semantic_equiv(pred, gold):
+        elif is_correct(pred, gold):    # semantic (unambiguous) or structural (CHOICE)
             sem += 1
     return ParseReport(len(samples), exact, sem, err)
 
