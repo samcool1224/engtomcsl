@@ -10,22 +10,24 @@ Backends:
                  You run this on your GPU; code included, import guarded.
 """
 from __future__ import annotations
-import json, os
+import json, os, re
 from typing import List, Dict, Optional, Callable, Any
 from .ast import Spec
-from .json_io import spec_from_json, json_schema
+from .json_io import spec_from_json, json_schema, parser_json_schema
 from .validate import validate
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-_SCHEMA = json_schema()
+_FULL_SCHEMA = json_schema()
+_PARSER_SCHEMA = parser_json_schema()
 
 DEFAULT_K_SHOT = 10
+ADAPTIVE_MAX_SHOT = 4
 
 SYSTEM = """You translate an interior-design instruction in English into MSCL-SPRING JSON.
 
-Output ONE JSON object: {"objects":[...], "formula": <node>}. No prose, no markdown.
-Copy the INPUT objects array EXACTLY. It is authoritative: never add, remove, rename, reorder,
-or modify an object. Use those exact ids in the formula.
+Output ONE JSON object: {"formula": <node>}. No prose, no markdown.
+The INPUT objects array is authoritative and will be attached automatically after generation.
+Do NOT copy it into the output. Use its exact object ids in the formula.
 
 THE ONLY LEGAL OBJECT TYPES (use these EXACT strings, including spaces and capitalization):
   "chair", "couch", "potted plant", "bed", "mirror", "dining table", "window", "desk",
@@ -113,18 +115,62 @@ def _exemplars_legacy(k: int = 4) -> List[dict]:
     return unamb[:n_unamb] + ambig[:n_ambig]
 
 
+def _adaptive_exemplars(english: str, objects: List[dict],
+                        max_k: int = ADAPTIVE_MAX_SHOT) -> List[dict]:
+    """Select only examples relevant to this instruction.
+
+    The previous prompt sent all ten examples on every request.  That was accurate but paid
+    the prefill cost for offset/reference/unsupported/value demonstrations even when absent.
+    Deterministic cue selection preserves the useful demonstration while normally using 2-4.
+    """
+    pairs = json.load(open(os.path.join(HERE, "..", "examples", "seed_pairs.json")))["pairs"]
+    by_id = {p["id"]: p for p in pairs}
+    lo = english.lower()
+    ids: List[str] = []
+
+    def add(ex_id: str):
+        if ex_id in by_id and ex_id not in ids:
+            ids.append(ex_id)
+
+    # One stable ordinary example anchors object declarations and relation syntax.
+    add("fig7_blue_microwave_green_toaster")
+
+    n_objects = len(objects)
+    relation_clause = lo.split(", with ", 1)[-1]
+    if n_objects >= 4 or relation_clause.count(",") >= 2:
+        add("synthetic_multi_object_binding")
+    if re.search(r"\b(well|far|way)\b", lo):
+        add("ambiguous_offset_emphasis")
+    if re.search(r"\b(near|next to|beside)\b|\bby\s+the\b", lo):
+        add("ambiguous_lamp_by_couch")
+    if any(o.get("status") == "new" and o.get("type") is None for o in objects):
+        add("ambiguous_unsupported_clock")
+    existing_types = [o.get("type") for o in objects if o.get("status") == "existing"]
+    if any(existing_types.count(t) >= 2 and f"the {str(t).lower()}" in lo
+           for t in set(existing_types) if t):
+        add("ambiguous_reference_example")
+    if (re.search(r"\b(?:wider|narrower|taller|shorter) than \d+", lo)
+            or "half of the image" in lo or "part of the image" in lo):
+        add("value_relation_example")
+    if re.search(r"\b(?:aligned|same width|same height|wider|narrower|taller|shorter)\b", lo):
+        add("fig8_chair_couch_coffeetable")
+
+    return [by_id[i] for i in ids[:max_k]]
+
+
 def build_prompt(english: str, objects: List[dict], k_shot: int = DEFAULT_K_SHOT,
-                 include_schema: bool = False) -> str:
+                 include_schema: bool = False, adaptive: bool = True) -> str:
     parts = [SYSTEM]
     # Outlines already enforces the schema token-by-token.  Repeating the large recursive
     # schema in every prompt adds latency/context pressure without adding validity.
     if include_schema:
         parts.append("JSON schema (the output must validate against this):\n"
-                     + json.dumps(_SCHEMA))
+                     + json.dumps(_PARSER_SCHEMA))
     parts.append("Examples:")
-    for ex in _exemplars(k_shot):
+    exemplars = (_adaptive_exemplars(english, objects) if adaptive else _exemplars(k_shot))
+    for ex in exemplars:
         ex_in = {"english": ex["english"], "objects": ex["objects"]}
-        ex_out = {"objects": ex["objects"], "formula": ex["formula"]}
+        ex_out = {"formula": ex["formula"]}
         parts.append("INPUT:\n" + json.dumps(ex_in))
         parts.append("OUTPUT:\n" + json.dumps(ex_out))
     parts.append("Now do this one.")
@@ -144,11 +190,17 @@ def _make_bnb_config(quantize):
     from transformers import BitsAndBytesConfig
     import torch
     if quantize == "4bit":
+        # T4/Turing (compute capability 7.x) has fast FP16 tensor cores but no native BF16.
+        # Ampere+ (8.x+) supports BF16 efficiently. The previous unconditional BF16 setting
+        # was a poor fit for the common Colab T4 used by this project.
+        major = torch.cuda.get_device_capability()[0] if torch.cuda.is_available() else 0
+        compute_dtype = torch.bfloat16 if major >= 8 else torch.float16
+        print(f"   4-bit compute dtype: {compute_dtype}")
         return BitsAndBytesConfig(
             load_in_4bit=True,
             bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_compute_dtype=compute_dtype,
         )
     if quantize == "8bit":
         return BitsAndBytesConfig(load_in_8bit=True)
@@ -184,7 +236,7 @@ class LocalBackend:
     schema into a decoding automaton is expensive; doing it per-call is what makes it 'hang').
     """
     def __init__(self, model_name="Qwen/Qwen2.5-7B-Instruct",
-                 max_tokens=1024, temperature=0.0, device="cuda", chat_template=True,
+                 max_tokens=512, temperature=0.0, device="cuda", chat_template=True,
                  quantize=None, adapter_path=None):
         """
         quantize:     None (full fp16/bf16), "4bit" (NF4, ~5GB for 7B), or "8bit" (~8GB).
@@ -196,7 +248,10 @@ class LocalBackend:
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.chat_template = chat_template
-        self._schema_str = json.dumps(_SCHEMA)
+        # Existing LoRA adapters were trained to emit the full spec. Few-shot inference uses
+        # the shorter formula-only schema; normalize_prediction restores the object table.
+        self.compact_output = adapter_path is None
+        self._schema_str = json.dumps(_PARSER_SCHEMA if self.compact_output else _FULL_SCHEMA)
         self._tokenizer = None
         self._api = None
         self.generator = None      # the compiled, reusable constrained generator
@@ -259,22 +314,35 @@ class LocalBackend:
             return prompt
 
     def generate(self, prompt: str, english: str, objects: List[dict]) -> dict:
+        import torch
         text = self._apply_chat(prompt)
-        if self._api == "new":
-            if self.generator is not None:
-                out = self.generator(text, max_new_tokens=self.max_tokens)
+        with torch.inference_mode():
+            if self._api == "new":
+                if self.generator is not None:
+                    out = self.generator(text, max_new_tokens=self.max_tokens)
+                else:
+                    out = self.model(text, self._output_type, max_new_tokens=self.max_tokens)
             else:
-                out = self.model(text, self._output_type, max_new_tokens=self.max_tokens)
-        else:
-            out = self.gen(text, max_tokens=self.max_tokens)
+                out = self.gen(text, max_tokens=self.max_tokens)
         return out if isinstance(out, dict) else json.loads(out)
+
+    def count_tokens(self, prompt: str) -> Optional[int]:
+        """Prompt size for latency diagnostics; tokenization is CPU-only and not generation."""
+        if self._tokenizer is None:
+            return None
+        try:
+            return len(self._tokenizer(prompt, add_special_tokens=False)["input_ids"])
+        except Exception:
+            return None
 
 
 Backend = Any  # anything with .generate(prompt, english, objects) -> dict
 
 
-def parse(english: str, objects: List[dict], backend: Backend,
-          k_shot: int = DEFAULT_K_SHOT) -> Spec:
+def build_parse_prompt(english: str, objects: List[dict], backend: Backend,
+                       k_shot: int = DEFAULT_K_SHOT,
+                       adaptive_examples: bool = True) -> str:
+    """Build the inference prompt that matches this backend's training/output mode."""
     # Fine-tuned backends were trained on the COMPACT prompt (no few-shot, no schema);
     # using it makes inference faster and matches the training distribution.
     if getattr(backend, "adapter_path", None):
@@ -282,9 +350,14 @@ def parse(english: str, objects: List[dict], backend: Backend,
         _p = _os.path.join(HERE, "..", "examples", "finetune_lora.py")
         _spec = importlib.util.spec_from_file_location("finetune_lora", _p)
         _m = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(_m)
-        prompt = _m.ft_prompt(english, objects)
-    else:
-        prompt = build_prompt(english, objects, k_shot=k_shot)
+        return _m.ft_prompt(english, objects)
+    return build_prompt(english, objects, k_shot=k_shot,
+                        adaptive=adaptive_examples)
+
+
+def parse(english: str, objects: List[dict], backend: Backend,
+          k_shot: int = DEFAULT_K_SHOT, adaptive_examples: bool = True) -> Spec:
+    prompt = build_parse_prompt(english, objects, backend, k_shot, adaptive_examples)
     raw = backend.generate(prompt, english, objects)
     from .postprocess import normalize_prediction
     from .json_io import dedupe_relations
