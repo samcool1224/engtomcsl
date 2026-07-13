@@ -86,7 +86,40 @@
                 "xeq",
                 "yeq",
                 "weq",
-                "heq",
+                "heq"
+              ]
+            },
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "minItems": 2,
+              "maxItems": 2
+            },
+            "const": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "node",
+            "name",
+            "args",
+            "const"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "node": {
+              "const": "rel"
+            },
+            "name": {
+              "enum": [
                 "above_value",
                 "below_value",
                 "left_value",
@@ -107,13 +140,10 @@
                 "type": "string"
               },
               "minItems": 1,
-              "maxItems": 2
+              "maxItems": 1
             },
             "const": {
-              "type": [
-                "integer",
-                "null"
-              ]
+              "type": "integer"
             }
           }
         },
@@ -133,7 +163,25 @@
               "type": "string"
             },
             "type": {
-              "type": "string"
+              "enum": [
+                "chair",
+                "couch",
+                "potted plant",
+                "bed",
+                "mirror",
+                "dining table",
+                "window",
+                "desk",
+                "toilet",
+                "door",
+                "TV",
+                "microwave",
+                "oven",
+                "toaster",
+                "sink",
+                "refrigerator",
+                "blender"
+              ]
             }
           }
         },
