@@ -9,8 +9,10 @@ from mscl import (Spec, Obj, Relation, TypePred, PropertyPred, Default,
                   resolve_ask_all, json_schema, ALL_RELATIONS)
 from mscl.relations import _BINARY, _UNARY
 from mscl.postprocess import normalize_prediction
-from mscl.parser import _exemplars, DEFAULT_K_SHOT
-from mscl.json_io import dedupe_relations
+from mscl.parser import (_exemplars, _adaptive_exemplars, build_prompt,
+                         StubBackend, DEFAULT_K_SHOT)
+from mscl.json_io import dedupe_relations, parser_json_schema
+from mscl.local_debug import parse_with_repair
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +78,11 @@ def test_validate_arity_and_value():
     bad = Spec([Obj("a", "new")], Relation("cright", ["a"]))   # needs 2 args
     try:
         validate(bad); assert False, "should raise"
+    except Exception:
+        pass
+    bad2 = Spec([Obj("a", "new")], Relation("right_value", ["a"]))  # needs const
+    try:
+        validate(bad2); assert False
     except Exception:
         pass
 
@@ -159,11 +166,6 @@ def test_dedupe_never_turns_and_args_into_a_dict():
 
 def _rel_for_test(name, args, const):
     return {"node": "rel", "name": name, "args": args, "const": const}
-    bad2 = Spec([Obj("a", "new")], Relation("right_value", ["a"]))  # needs const
-    try:
-        validate(bad2); assert False
-    except Exception:
-        pass
 
 
 def test_feasibility_sound_unsat():
@@ -254,11 +256,47 @@ def test_resolved_spec_renders_to_spring():
 def test_json_schema_wellformed():
     sch = json_schema()
     assert sch["$defs"]["node"]["oneOf"]
-    names = None
+    names = set()
+    arities = {}
     for branch in sch["$defs"]["node"]["oneOf"]:
         if branch["properties"]["node"].get("const") == "rel":
-            names = branch["properties"]["name"]["enum"]
-    assert names and len(names) == 28
+            branch_names = branch["properties"]["name"]["enum"]
+            names.update(branch_names)
+            for name in branch_names:
+                arities[name] = (branch["properties"]["args"]["minItems"],
+                                 branch["properties"]["args"]["maxItems"])
+    assert len(names) == 28
+    assert arities["heq"] == (2, 2)
+    assert arities["heq_value"] == (1, 1)
+
+
+def test_parser_schema_is_formula_only():
+    sch = parser_json_schema()
+    assert sch["required"] == ["formula"]
+    assert set(sch["properties"]) == {"formula"}
+
+
+def test_adaptive_prompt_is_smaller_and_formula_only():
+    objects = [{"id": "e0", "status": "existing", "type": "TV", "box": [1, 2, 3, 4]},
+               {"id": "o0", "status": "new", "type": "bed"}]
+    english = "Put a bed well above the TV."
+    adaptive = build_prompt(english, objects, adaptive=True)
+    full = build_prompt(english, objects, adaptive=False)
+    assert len(_adaptive_exemplars(english, objects)) <= 4
+    assert len(adaptive) < len(full) * 0.6
+    assert 'OUTPUT:\n{"formula":' in adaptive
+
+
+def test_parse_timing_separates_inference_and_checking():
+    objects = [{"id": "o0", "status": "new", "type": "sink"}]
+    backend = StubBackend({"Add a sink.": {"node": "and", "args": [
+        {"node": "type", "obj": "o0", "type": "sink"},
+        {"node": "default", "obj": "o0"}]}})
+    _, timing = parse_with_repair("Add a sink.", objects, backend,
+                                  retries=0, return_timing=True)
+    assert timing.attempts == 1
+    assert timing.inference_s >= 0 and timing.checking_s >= 0
+    assert timing.total_s >= timing.inference_s
 
 
 # ---------------------------------------------------------------------------
