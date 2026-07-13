@@ -25,7 +25,7 @@ import json
 from typing import Any, Dict
 from .ast import (Spec, Obj, Atom, Relation, TypePred, PropertyPred, Default,
                   Not, And, Or, Choice, Option, Formula, CHOICE_KINDS)
-from .relations import ALL_RELATIONS, arity
+from .relations import ALL_RELATIONS, arity, _BINARY, _UNARY
 from .profile import SPRING_TYPES as _SPRING_TYPES
 
 
@@ -104,7 +104,7 @@ def spec_to_json(s: Spec) -> Dict[str, Any]:
 # JSON Schema for grammar-constrained decoding.
 # This is the machine-readable contract the LLM decodes against (Outlines / xgrammar /
 # structured-output APIs). It guarantees: valid node tags, valid relation names,
-# correct arity is checked post-hoc (schema can't easily express name->arity link).
+# relation arity is enforced during constrained decoding by separate binary/unary branches.
 # ---------------------------------------------------------------------------
 def json_schema() -> Dict[str, Any]:
     node_ref = {"$ref": "#/$defs/node"}
@@ -140,10 +140,18 @@ def json_schema() -> Dict[str, Any]:
                      "additionalProperties": False,
                      "properties": {
                          "node": {"const": "rel"},
-                         "name": {"enum": list(ALL_RELATIONS)},
+                         "name": {"enum": list(_BINARY)},
                          "args": {"type": "array", "items": {"type": "string"},
-                                  "minItems": 1, "maxItems": 2},
+                                  "minItems": 2, "maxItems": 2},
                          "const": {"type": ["integer", "null"]}}},
+                    {"type": "object", "required": ["node", "name", "args", "const"],
+                     "additionalProperties": False,
+                     "properties": {
+                         "node": {"const": "rel"},
+                         "name": {"enum": list(_UNARY)},
+                         "args": {"type": "array", "items": {"type": "string"},
+                                  "minItems": 1, "maxItems": 1},
+                         "const": {"type": "integer"}}},
                     {"type": "object", "required": ["node", "obj", "type"],
                      "additionalProperties": False,
                      "properties": {"node": {"const": "type"},
@@ -187,6 +195,25 @@ def json_schema() -> Dict[str, Any]:
                 ]
             }
         },
+    }
+
+
+def parser_json_schema() -> Dict[str, Any]:
+    """Compact constrained-output schema used by the few-shot parser.
+
+    The input object table is authoritative and normalize_prediction() restores it after
+    generation, so asking the model to copy it wastes output tokens.  The public/full schema
+    returned by json_schema() remains unchanged for stored specs and external integrations.
+    """
+    full = json_schema()
+    return {
+        "$schema": full["$schema"],
+        "title": "MSCL-SPRING parser output",
+        "type": "object",
+        "required": ["formula"],
+        "additionalProperties": False,
+        "properties": {"formula": {"$ref": "#/$defs/node"}},
+        "$defs": full["$defs"],
     }
 
 
