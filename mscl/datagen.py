@@ -11,8 +11,9 @@ English is produced by TEMPLATES (deterministic, runs here). A `paraphrase_hook`
 provided so you can later rewrite the robotic templates with your local model (you run
 that step); the gold logic is unchanged by paraphrasing.
 
-Every generated spec is checked satisfiable via the feasibility oracle before being kept,
-so the dataset never contains impossible unambiguous specs.
+Every generated spec is checked with the exact Z3 backend when ``z3-solver`` is installed
+(the lightweight feasibility oracle remains a solver-free fallback), so newly generated
+datasets do not retain impossible layouts.
 """
 from __future__ import annotations
 import random, json
@@ -169,6 +170,9 @@ def _try_make_unambiguous(rng: random.Random) -> Optional[Tuple[Spec, List[str]]
     dom = init_domains(ids, existing)
     if not feasible(atoms, dom):
         return None
+    exact = _exactly_satisfiable(spec)
+    if exact is False:
+        return None
     return spec, phrases
 
 
@@ -299,13 +303,25 @@ def _priors(rng: random.Random, n: int) -> List[float]:
 
 def _spec_has_feasible_path(spec: Spec) -> bool:
     """True if at least one combination of CHOICE options is jointly feasible.
-    Cheap check: each CHOICE independently has >=1 feasible option against the hard skeleton."""
+    Z3 compiles CHOICE as a disjunction, so this checks combinations jointly.  The older
+    independent-option check is retained only for solver-free parser environments."""
+    exact = _exactly_satisfiable(spec)
+    if exact is not None:
+        return exact
     from .dialogue import _all_choices, _option_feasible
     existing = {o.id: o.box for o in spec.objects if o.box}
     for ch in _all_choices(spec.formula):
         if not any(_option_feasible(spec, ch, o, existing) for o in ch.options):
             return False
     return True
+
+
+def _exactly_satisfiable(spec: Spec) -> Optional[bool]:
+    """Return exact SAT, or ``None`` when the optional solver is unavailable."""
+    from .z3_backend import Z3Backend, z3_available
+    if not z3_available():
+        return None
+    return Z3Backend(spec).is_satisfiable()
 
 
 AMBIG_GENERATORS = [gen_ambiguous_direction, gen_ambiguous_offset,
