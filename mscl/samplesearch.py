@@ -16,7 +16,6 @@ The result is always independently model-checked before it is returned.  The def
 guide is a transparent geometric prior; it can later be replaced with an adapter around
 SPRING's ``core.pt`` or another learned layout model without changing the solver.
 """
-from __future__ import annotations
 from typing import List
 from .ast import (Spec, Atom, Relation, TypePred, PropertyPred, Default,
                   Not, And, Or, Choice, Formula, CHOICE_KINDS, OPS, PRIMS)
