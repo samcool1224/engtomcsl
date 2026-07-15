@@ -1,3 +1,7 @@
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+"""MSCL v1 — validation: well-formedness + MSCL-SPRING profile conformance."""
 """Preference-guided, exact SampleSearch for MSCL layouts.
 
 SPRING's useful idea is retained while its preliminary interval checker is replaced
@@ -12,10 +16,6 @@ The result is always independently model-checked before it is returned.  The def
 guide is a transparent geometric prior; it can later be replaced with an adapter around
 SPRING's ``core.pt`` or another learned layout model without changing the solver.
 """
-from __future__ import annotations
-
-from dataclasses import dataclass, field
-"""MSCL v1 — validation: well-formedness + MSCL-SPRING profile conformance."""
 from __future__ import annotations
 from typing import List
 from .ast import (Spec, Atom, Relation, TypePred, PropertyPred, Default,
