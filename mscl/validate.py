@@ -1,8 +1,8 @@
 """MSCL v1 — validation: well-formedness + MSCL-SPRING profile conformance."""
 from __future__ import annotations
 from typing import List
-from .ast import (Spec, Relation, TypePred, PropertyPred, Default,
-                  Not, And, Or, Choice, Formula, CHOICE_KINDS)
+from .ast import (Spec, Atom, Relation, TypePred, PropertyPred, Default,
+                  Not, And, Or, Choice, Formula, CHOICE_KINDS, OPS, PRIMS)
 from .relations import ALL_RELATIONS, arity, NO_OFFSET, _UNARY
 from .profile import is_supported_type
 
@@ -18,9 +18,35 @@ def validate(spec: Spec, *, profile_spring: bool = True,
     ids = {o.id for o in spec.objects}
     if len(ids) != len(spec.objects):
         raise ValidationError("duplicate object ids")
+    objects = {o.id: o for o in spec.objects}
+    for obj in spec.objects:
+        if obj.status not in ("existing", "new"):
+            raise ValidationError(f"bad status for {obj.id}: {obj.status}")
+        if obj.status == "existing" and obj.box is None:
+            raise ValidationError(f"existing object {obj.id} requires an observed box")
+        if obj.status == "new" and obj.box is not None:
+            raise ValidationError(f"new object {obj.id} must not have a fixed box")
+        if obj.box is not None:
+            if len(obj.box) != 4 or any(not isinstance(v, int) for v in obj.box):
+                raise ValidationError(f"box for {obj.id} must contain four integers")
 
     def check(f: Formula):
-        if isinstance(f, Relation):
+        if isinstance(f, Atom):
+            if f.op not in OPS:
+                raise ValidationError(f"unknown atom operator {f.op}")
+            if not isinstance(f.const, int):
+                raise ValidationError("atom constant must be an integer")
+            for term in f.terms:
+                if len(term) != 3:
+                    raise ValidationError(f"bad atom term {term}")
+                coeff, obj, prim = term
+                if not isinstance(coeff, int):
+                    raise ValidationError(f"atom coefficient must be an integer: {term}")
+                if obj not in ids:
+                    raise ValidationError(f"atom references unknown object {obj}")
+                if prim not in PRIMS:
+                    raise ValidationError(f"unknown primitive {prim}")
+        elif isinstance(f, Relation):
             if f.name not in ALL_RELATIONS:
                 raise ValidationError(f"unknown relation {f.name}")
             if len(f.args) != arity(f.name):
@@ -37,6 +63,11 @@ def validate(spec: Spec, *, profile_spring: bool = True,
                 raise ValidationError(f"type() references unknown object {f.obj}")
             if profile_spring and not is_supported_type(f.type):
                 warnings.append(f'type "{f.type}" not in SPRING vocabulary')
+            table_type = objects[f.obj].type
+            if table_type is not None and table_type != f.type:
+                raise ValidationError(
+                    f'type({f.obj}, "{f.type}") conflicts with object-table type "{table_type}"'
+                )
         elif isinstance(f, PropertyPred):
             if f.obj not in ids:
                 raise ValidationError(f"property() references unknown object {f.obj}")
