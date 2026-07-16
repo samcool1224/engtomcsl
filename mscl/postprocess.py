@@ -141,6 +141,64 @@ def _single_explicit_relation(english: str, objects: List[dict]) -> Optional[dic
     return None
 
 
+def _explicit_complete_relations(english: str, objects: List[dict]) -> List[dict]:
+    """Recover explicit complete-direction clauses in multi-object instructions.
+
+    A small model occasionally preserves the two object ids but flips the direction or
+    invents a numeric offset.  These clauses are lexically unambiguous, so bind each cue to
+    the nearest uniquely identifiable object mention before it and after ``of``.  Ambiguous
+    repeated types are deliberately left to the model/dialogue layer.
+    """
+    lo = english.lower()
+
+    # An alias is usable only when it identifies one supplied object.  Properties make
+    # phrases such as "the blue chair" usable even if another chair is present.
+    aliases: Dict[str, List[str]] = {}
+    for obj in objects:
+        typ = str(obj.get("type") or "").lower().strip()
+        if not typ:
+            continue
+        aliases.setdefault(typ, []).append(obj["id"])
+        for prop in obj.get("properties", []):
+            alias = f"{str(prop).lower().strip()} {typ}".strip()
+            aliases.setdefault(alias, []).append(obj["id"])
+
+    mentions = []
+    for alias, ids in aliases.items():
+        unique_ids = set(ids)
+        if len(unique_ids) != 1:
+            continue
+        oid = next(iter(unique_ids))
+        for match in re.finditer(rf"(?<![a-z0-9-]){re.escape(alias)}(?![a-z0-9-])", lo):
+            mentions.append((match.start(), match.end(), oid, len(alias)))
+
+    cue_re = re.compile(
+        r"\b(?:completely|fully)\s+(?:to\s+the\s+)?"
+        r"(left|right|above|below)\s+of\b"
+    )
+    recovered = []
+    for cue in cue_re.finditer(lo):
+        before = [m for m in mentions if m[1] <= cue.start()]
+        after = [m for m in mentions if m[0] >= cue.end()]
+        if not before or not after:
+            continue
+        # Prefer the nearest occurrence; prefer the longer alias when aliases overlap.
+        subject = max(before, key=lambda m: (m[1], m[3]))[2]
+        target = min(after, key=lambda m: (m[0], -m[3]))[2]
+        if subject != target:
+            recovered.append(_rel(_COMPLETE[cue.group(1)], [subject, target]))
+
+    # Stable de-duplication in case both a property-qualified and bare type alias matched.
+    unique = []
+    seen = set()
+    for relation in recovered:
+        key = (relation["name"], tuple(relation["args"]))
+        if key not in seen:
+            seen.add(key)
+            unique.append(relation)
+    return unique
+
+
 def _absolute_relation(english: str, objects: List[dict]) -> Optional[dict]:
     if not _is_atomic_instruction(english):
         return None
@@ -224,6 +282,14 @@ def normalize_prediction(spec_json: Dict, english: str, objects: List[dict]) -> 
         explicit = _absolute_relation(english, objects) or _single_explicit_relation(english, objects)
         if explicit is not None:
             args = [a for a in args if a.get("node") != "rel"] + [explicit]
+        else:
+            complete_relations = _explicit_complete_relations(english, objects)
+            if complete_relations:
+                repaired_pairs = {tuple(r["args"]) for r in complete_relations}
+                args = [
+                    a for a in args
+                    if not (a.get("node") == "rel" and tuple(a.get("args", [])) in repaired_pairs)
+                ] + complete_relations
 
     # Stable de-duplication for boilerplate and leaves.
     seen, kept = set(), []
