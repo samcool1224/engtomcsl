@@ -9,7 +9,11 @@ from .z3_backend import (Z3Backend, UnsatExplanation, SolverUnavailableError,
                          SolverUnknownError, z3_available)
 from .samplesearch import (SampleSearch, SampleResult, SearchStats, SearchEvent,
                            PreferenceModel, UniformPreference, GeometricPreference,
-                           UnsatError, generate_layout)
+                           TYPICAL_SIZE, UnsatError, generate_layout)
+from .layout_eval import (LayoutMetrics, EvaluationReport, measure_layout,
+                          evaluate_sampler, compare_preferences,
+                          format_comparison_table)
+from .layout_viz import render_layout_svg, render_layout_grid_svg, save_svg
 from .validate import validate, assert_resolved, ValidationError
 from .dialogue import resolve, resolve_ask_none, resolve_ask_all, Question, ResolutionLog
 from . import profile
@@ -27,7 +31,10 @@ __all__ = [
     "Z3Backend", "UnsatExplanation", "SolverUnavailableError", "SolverUnknownError",
     "z3_available", "SampleSearch", "SampleResult", "SearchStats", "SearchEvent",
     "PreferenceModel", "UniformPreference", "GeometricPreference", "UnsatError",
-    "generate_layout",
+    "TYPICAL_SIZE", "generate_layout",
+    "LayoutMetrics", "EvaluationReport", "measure_layout", "evaluate_sampler",
+    "compare_preferences", "format_comparison_table",
+    "render_layout_svg", "render_layout_grid_svg", "save_svg",
     "validate", "assert_resolved", "ValidationError",
     "resolve", "resolve_ask_none", "resolve_ask_all", "Question", "ResolutionLog",
     "profile",
