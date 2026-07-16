@@ -11,6 +11,7 @@ environments that have not installed the solver extra yet.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 
 from .ast import (And, Atom, Choice, Default, Formula, Not, Or, PropertyPred,
@@ -46,16 +47,28 @@ class UnsatExplanation:
 
 
 def z3_available() -> bool:
-    return z3 is not None
+    return _load_z3() is not None
+
+
+def _load_z3():
+    """Import Z3 now, including after a notebook installs it later in the session."""
+    global z3
+    if z3 is None:
+        try:
+            z3 = importlib.import_module("z3")
+        except ImportError:
+            return None
+    return z3
 
 
 def _require_z3():
-    if z3 is None:
+    loaded = _load_z3()
+    if loaded is None:
         raise SolverUnavailableError(
             "SampleSearch requires z3-solver. Install it with "
             "`python -m pip install -r requirements.txt`."
         )
-    return z3
+    return loaded
 
 
 class Z3Backend:
