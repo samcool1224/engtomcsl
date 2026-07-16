@@ -102,6 +102,30 @@ def test_postprocess_repairs_explicit_binary_relation():
     assert {"node": "rel", "name": "shorter", "args": ["o0", "e0"], "const": None} in out["formula"]["args"]
 
 
+def test_postprocess_repairs_multiple_explicit_complete_relations():
+    objects = [
+        {"id": "e0", "status": "existing", "type": "dining table",
+         "box": [400, 350, 250, 180]},
+        {"id": "o0", "status": "new", "type": "chair", "properties": ["blue"]},
+        {"id": "o1", "status": "new", "type": "potted plant"},
+    ]
+    bad = {"objects": objects, "formula": {"node": "and", "args": [
+        _rel_for_test("cleft", ["o0", "e0"], None),
+        _rel_for_test("cleft", ["o1", "e0"], 1000),
+    ]}}
+    english = ("Add a blue chair and a potted plant, with the blue chair completely "
+               "to the left of the dining table and the potted plant completely to "
+               "the right of the dining table.")
+
+    out = normalize_prediction(bad, english, objects)
+    relations = [a for a in out["formula"]["args"] if a.get("node") == "rel"]
+
+    assert relations == [
+        _rel_for_test("cleft", ["o0", "e0"], None),
+        _rel_for_test("cright", ["o1", "e0"], None),
+    ]
+
+
 def test_postprocess_emits_offset_choice_and_canonical_span():
     objects = [{"id": "e0", "status": "existing", "type": "microwave", "box": [1, 2, 3, 4]},
                {"id": "o0", "status": "new", "type": "oven"}]
