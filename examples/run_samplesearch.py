@@ -1,4 +1,9 @@
-"""Small exact-layout demo. Run from the repository root after installing requirements."""
+"""Small exact-layout demo. Works both as a file and as a module."""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from mscl import And, Default, Obj, Relation, SampleSearch, Spec, TypePred
 
 
