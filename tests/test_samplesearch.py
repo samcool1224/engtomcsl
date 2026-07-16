@@ -9,10 +9,12 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mscl import (ALL_RELATIONS, And, Atom, Choice, Default, GeometricPreference, Not,
                   Obj, Option, Or, Relation, SampleSearch, Spec, TypePred,
                   UniformPreference, UnsatError, Z3Backend, generate_layout,
-                  model_check, spec_from_json)
+                  evaluate_sampler, format_comparison_table, model_check,
+                  render_layout_grid_svg, render_layout_svg, spec_from_json)
 from mscl.datagen import generate_dataset
 from mscl.relations import NO_OFFSET, arity
 from mscl.validate import ValidationError
+import mscl.z3_backend as z3_backend_module
 
 
 @contextmanager
@@ -164,6 +166,51 @@ def test_new_dataset_generation_uses_exact_satisfiability_filter():
     for sample in samples:
         spec = spec_from_json(sample.gold_json)
         assert Z3Backend(spec).is_satisfiable(), sample.english
+
+
+def test_z3_loader_recovers_after_late_notebook_install():
+    installed = z3_backend_module.z3
+    z3_backend_module.z3 = None
+    try:
+        assert z3_backend_module.z3_available()
+        assert z3_backend_module._require_z3() is not None
+    finally:
+        z3_backend_module.z3 = installed
+
+
+def test_geometric_exploration_is_one_global_mixture():
+    spec = Spec([Obj("a", "new", "chair")], Default("a"))
+    guide = GeometricPreference(exploration=1.0)
+    root = guide.branch_weights(spec=spec, variable=("a", "w"),
+                                branches=((1, 500), (501, 1000)), assigned={})
+    lower_children = guide.branch_weights(spec=spec, variable=("a", "w"),
+                                          branches=((1, 250), (251, 500)), assigned={})
+    assert abs(sum(root) - 1.0) < 1e-12
+    assert abs(sum(lower_children) - root[0]) < 1e-12
+
+
+def test_layout_visualization_renders_single_and_grid_svg():
+    spec = Spec([Obj("a", "new", "chair")], Default("a"))
+    result = SampleSearch().sample(spec, seed=2)
+    single = render_layout_svg(spec, result.layout, title="chair sample")
+    grid = render_layout_grid_svg(spec, [result.layout, result.layout], columns=2)
+    assert single.startswith("<svg") and "chair sample" in single
+    assert "a: chair" in single and "<rect" in single
+    assert grid.startswith("<svg") and "sample 2" in grid
+
+
+def test_evaluator_reports_validity_diversity_and_preference_fit():
+    spec = Spec([Obj("a", "new", "chair")], Default("a"))
+    uniform = evaluate_sampler(spec, SampleSearch(UniformPreference()),
+                               count=24, seed=42, label="uniform")
+    geometric = evaluate_sampler(spec, SampleSearch(GeometricPreference()),
+                                 count=24, seed=42, label="geometric")
+    assert uniform.validity_rate == geometric.validity_rate == 1.0
+    assert uniform.unique_count == geometric.unique_count == 24
+    assert geometric.mean_typical_size_error < uniform.mean_typical_size_error
+    assert geometric.mean_diversity > 0
+    table = format_comparison_table([uniform, geometric])
+    assert "size err" in table and "geometric" in table
 
 
 if __name__ == "__main__":
