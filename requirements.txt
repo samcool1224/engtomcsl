@@ -1,2 +1,6 @@
-lark>=1.1,<2
-z3-solver>=4.13,<5
+# Install after requirements.txt for the optional from-scratch image stage.
+diffusers>=0.30,<0.40
+transformers>=4.44,<5
+accelerate>=0.33,<2
+safetensors>=0.4,<1
+Pillow>=10,<13
