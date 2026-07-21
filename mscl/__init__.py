@@ -14,6 +14,12 @@ from .layout_eval import (LayoutMetrics, EvaluationReport, measure_layout,
                           evaluate_sampler, compare_preferences,
                           format_comparison_table)
 from .layout_viz import render_layout_svg, render_layout_grid_svg, save_svg
+from .object_plan import (ObjectPlanError, OBJECT_PROPERTIES, extract_new_objects,
+                          object_phrase)
+from .image_generation import (DEFAULT_GLIGEN_MODEL, DEFAULT_NEGATIVE_PROMPT,
+                               GroundedScene, GligenImageGenerator,
+                               layout_to_grounded_scene)
+from .english_to_image import ScenePlan, EnglishToImageResult, EnglishToImageSystem
 from .validate import validate, assert_resolved, ValidationError
 from .dialogue import resolve, resolve_ask_none, resolve_ask_all, Question, ResolutionLog
 from . import profile
@@ -35,6 +41,10 @@ __all__ = [
     "LayoutMetrics", "EvaluationReport", "measure_layout", "evaluate_sampler",
     "compare_preferences", "format_comparison_table",
     "render_layout_svg", "render_layout_grid_svg", "save_svg",
+    "ObjectPlanError", "OBJECT_PROPERTIES", "extract_new_objects", "object_phrase",
+    "DEFAULT_GLIGEN_MODEL", "DEFAULT_NEGATIVE_PROMPT", "GroundedScene",
+    "GligenImageGenerator", "layout_to_grounded_scene",
+    "ScenePlan", "EnglishToImageResult", "EnglishToImageSystem",
     "validate", "assert_resolved", "ValidationError",
     "resolve", "resolve_ask_none", "resolve_ask_all", "Question", "ResolutionLog",
     "profile",
