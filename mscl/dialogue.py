@@ -44,6 +44,7 @@ class Question:
 @dataclass
 class ResolutionLog:
     asked: List[Question] = field(default_factory=list)
+    selected_answers: List[Tuple[int, str]] = field(default_factory=list)
     auto_resolved: List[Tuple[str, str]] = field(default_factory=list)   # (kind, why)
     low_confidence: List[str] = field(default_factory=list)
 
@@ -190,6 +191,7 @@ def resolve(spec: Spec, oracle: Oracle, budget: int = 3,
         idx = max(0, min(idx, len(ch.options) - 1))
         _collapse(ch, ch.options[idx])
         log.asked.append(q)
+        log.selected_answers.append((idx, q.options_text[idx]))
         asked += 1
         # re-prune: an identity/scope answer can make geometric options infeasible
         progressed = True
