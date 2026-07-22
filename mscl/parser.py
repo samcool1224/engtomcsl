@@ -245,6 +245,8 @@ class LocalBackend:
                       fine-tune prompt (see examples/finetune_lora.py: ft_prompt).
         """
         import outlines
+        self.model_name = model_name
+        self.device = device
         self.max_tokens = max_tokens
         self.temperature = temperature
         self.chat_template = chat_template
