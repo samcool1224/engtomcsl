@@ -1,12 +1,15 @@
 """Offline tests for the from-scratch English-to-image vertical slice."""
+import json
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from mscl import (And, Default, EnglishToImageSystem, GligenImageGenerator, Obj,
                   PropertyPred, Relation, Spec, StubBackend, TypePred,
-                  extract_new_objects, layout_to_grounded_scene)
+                  build_run_record, extract_new_objects, format_run_report,
+                  layout_to_grounded_scene, save_run_bundle)
 
 
 def test_extracts_supported_objects_properties_and_dedupes_references():
@@ -41,7 +44,11 @@ def test_layout_converts_to_normalized_xyxy_boxes_and_phrases():
 
 
 class _FakeImage:
-    pass
+    size = (512, 512)
+
+    def save(self, path):
+        with open(path, "wb") as handle:
+            handle.write(b"fake image")
 
 
 class _FakeOutput:
@@ -115,6 +122,47 @@ def test_from_scratch_multirelation_error_is_repaired_before_layout():
     table, chair, plant = (plan.sample.layout[k] for k in ("o0", "o1", "o2"))
     assert chair[0] + chair[2] <= table[0]
     assert plant[0] >= table[0] + table[2]
+
+
+def test_run_record_contains_auditable_pipeline_information():
+    english = "Add a chair."
+    formula = {"node": "and", "args": [
+        {"node": "type", "obj": "o0", "type": "chair"},
+        {"node": "default", "obj": "o0"},
+    ]}
+    system = EnglishToImageSystem(
+        StubBackend(gold={english: formula}), image_generator=_FakeImageGenerator()
+    )
+    result = system.generate(english, layout_seed=11, image_seed=12)
+    record = build_run_record(result)
+    assert record["input"]["english"] == english
+    assert record["layout"]["exact_z3_verification"] is True
+    assert record["configuration"]["layout_seed"] == 11
+    assert record["configuration"]["image_seed"] == 12
+    assert record["grounding"]["object_ids"] == ["o0"]
+    assert record["parsed_mscl_before_resolution"]["formula"] == formula
+    assert "object_extraction_s" in record["timings_seconds"]
+    assert "grounding_adapter_s" in record["timings_seconds"]
+    assert "RESOLVED MSCL" in format_run_report(record)
+
+
+def test_run_bundle_saves_image_layout_json_and_text_report():
+    english = "Add a chair."
+    formula = {"node": "and", "args": [
+        {"node": "type", "obj": "o0", "type": "chair"},
+        {"node": "default", "obj": "o0"},
+    ]}
+    system = EnglishToImageSystem(
+        StubBackend(gold={english: formula}), image_generator=_FakeImageGenerator()
+    )
+    result = system.generate(english, layout_seed=4, image_seed=5)
+    with tempfile.TemporaryDirectory() as directory:
+        paths, record, report = save_run_bundle(result, directory, prefix="test_run")
+        assert all(os.path.isfile(path) for path in paths.values())
+        saved = json.load(open(paths["run_json"], encoding="utf-8"))
+        assert saved["status"] == "success"
+        assert saved["outputs"] == paths
+        assert open(paths["report_txt"], encoding="utf-8").read() == report
 
 
 if __name__ == "__main__":
