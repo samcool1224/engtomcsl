@@ -19,7 +19,8 @@ from .object_plan import (ObjectPlanError, OBJECT_PROPERTIES, extract_new_object
 from .image_generation import (DEFAULT_GLIGEN_MODEL, DEFAULT_NEGATIVE_PROMPT,
                                GroundedScene, GligenImageGenerator,
                                layout_to_grounded_scene)
-from .english_to_image import ScenePlan, EnglishToImageResult, EnglishToImageSystem
+from .english_to_image import (ScenePlan, EnglishToImageResult, EnglishToImageSystem,
+                               build_run_record, format_run_report, save_run_bundle)
 from .validate import validate, assert_resolved, ValidationError
 from .dialogue import resolve, resolve_ask_none, resolve_ask_all, Question, ResolutionLog
 from . import profile
@@ -45,6 +46,7 @@ __all__ = [
     "DEFAULT_GLIGEN_MODEL", "DEFAULT_NEGATIVE_PROMPT", "GroundedScene",
     "GligenImageGenerator", "layout_to_grounded_scene",
     "ScenePlan", "EnglishToImageResult", "EnglishToImageSystem",
+    "build_run_record", "format_run_report", "save_run_bundle",
     "validate", "assert_resolved", "ValidationError",
     "resolve", "resolve_ask_none", "resolve_ask_all", "Question", "ResolutionLog",
     "profile",
