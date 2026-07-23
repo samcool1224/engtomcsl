@@ -18,7 +18,9 @@ from .object_plan import (ObjectPlanError, OBJECT_PROPERTIES, extract_new_object
                           object_phrase)
 from .image_generation import (DEFAULT_GLIGEN_MODEL, DEFAULT_NEGATIVE_PROMPT,
                                GroundedScene, GligenImageGenerator,
-                               layout_to_grounded_scene)
+                               grounded_color_fidelity, layout_to_grounded_scene)
+from .scene_quality import (SceneQuality, LayoutSelection, score_scene_layout,
+                            select_best_layout)
 from .english_to_image import (ScenePlan, EnglishToImageResult, EnglishToImageSystem,
                                build_run_record, format_run_report, save_run_bundle)
 from .validate import validate, assert_resolved, ValidationError
@@ -45,6 +47,8 @@ __all__ = [
     "ObjectPlanError", "OBJECT_PROPERTIES", "extract_new_objects", "object_phrase",
     "DEFAULT_GLIGEN_MODEL", "DEFAULT_NEGATIVE_PROMPT", "GroundedScene",
     "GligenImageGenerator", "layout_to_grounded_scene",
+    "grounded_color_fidelity", "SceneQuality", "LayoutSelection",
+    "score_scene_layout", "select_best_layout",
     "ScenePlan", "EnglishToImageResult", "EnglishToImageSystem",
     "build_run_record", "format_run_report", "save_run_bundle",
     "validate", "assert_resolved", "ValidationError",
