@@ -9,7 +9,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from mscl import (And, Default, EnglishToImageSystem, GligenImageGenerator, Obj,
                   PropertyPred, Relation, Spec, StubBackend, TypePred,
                   build_run_record, extract_new_objects, format_run_report,
-                  layout_to_grounded_scene, save_run_bundle)
+                  grounded_color_fidelity, layout_to_grounded_scene,
+                  save_run_bundle, score_scene_layout)
 
 
 def test_extracts_supported_objects_properties_and_dedupes_references():
@@ -41,6 +42,51 @@ def test_layout_converts_to_normalized_xyxy_boxes_and_phrases():
     assert scene.object_ids == ("o0",)
     assert scene.phrases == ("a blue chair",)
     assert scene.boxes == ((0.1, 0.2, 0.4, 0.6),)
+    assert "colors are mandatory" in scene.prompt
+    assert "Required inventory: one blue chair" in scene.prompt
+    assert "exactly 1 chair total" in scene.prompt
+
+
+def test_scene_quality_prefers_coherent_dining_room_over_observed_bad_layout():
+    spec = Spec(
+        [
+            Obj("table", "new", "dining table"),
+            Obj("chair", "new", "chair", ["blue"]),
+            Obj("plant", "new", "potted plant"),
+        ],
+        And([
+            Default("table"), Default("chair"), Default("plant"),
+            Relation("cleft", ["chair", "table"]),
+            Relation("cright", ["plant", "table"]),
+        ]),
+    )
+    coherent = {
+        "table": (310, 410, 380, 240),
+        "chair": (90, 390, 190, 260),
+        "plant": (720, 340, 180, 310),
+    }
+    observed_bad = {
+        "table": (505, 112, 325, 339),
+        "chair": (183, 285, 178, 304),
+        "plant": (845, 689, 151, 292),
+    }
+    assert score_scene_layout(spec, coherent).total < score_scene_layout(
+        spec, observed_bad).total
+
+
+def test_grounded_color_fidelity_prefers_blue_in_blue_chair_region():
+    from PIL import Image
+
+    spec = Spec([Obj("o0", "new", "chair", ["blue"])], Default("o0"))
+    scene = layout_to_grounded_scene(
+        spec, {"o0": (0, 0, 1000, 1000)}, "Add a blue chair."
+    )
+    blue = Image.new("RGB", (64, 64), (30, 80, 220))
+    red = Image.new("RGB", (64, 64), (220, 40, 30))
+    blue_score, details = grounded_color_fidelity(blue, scene, spec)
+    red_score, _ = grounded_color_fidelity(red, scene, spec)
+    assert blue_score > red_score
+    assert details["o0"] == blue_score
 
 
 class _FakeImage:
