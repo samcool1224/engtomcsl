@@ -1,13 +1,19 @@
-"""First complete English -> image run for Google Colab.
+"""First complete English -> image run for Colab or local Jupyter.
 
-Run from /content/engtomcsl after installing requirements.txt and
-requirements-image.txt.  Loading the two models is intentionally done once.
+Run from the project after installing requirements.txt and
+requirements-image.txt. Loading the two models is intentionally done once.
 """
 import os
 import sys
 import time
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+OUTPUT_DIR = Path(
+    os.environ.get("MSCL_OUTPUT_DIR", str(PROJECT_ROOT))
+).expanduser().resolve()
+
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from mscl import (DEFAULT_NEGATIVE_PROMPT, EnglishToImageSystem,
                   GligenImageGenerator, LocalBackend, save_run_bundle)
@@ -58,7 +64,7 @@ result.generation_config["parser_model_load_s"] = parser_model_load_s
 
 paths, record, report = save_run_bundle(
     result,
-    "/content/engtomcsl",
+    str(OUTPUT_DIR),
     prefix="english_to_image",
 )
 print("\n" + report)
