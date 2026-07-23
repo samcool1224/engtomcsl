@@ -189,6 +189,27 @@ def test_geometric_exploration_is_one_global_mixture():
     assert abs(sum(lower_children) - root[0]) < 1e-12
 
 
+def test_geometric_preference_aligns_explicit_horizontal_relations():
+    spec = Spec(
+        [
+            Obj("table", "new", "dining table"),
+            Obj("chair", "new", "chair"),
+            Obj("plant", "new", "potted plant"),
+        ],
+        And([
+            Default("table"), Default("chair"), Default("plant"),
+            Relation("cleft", ["chair", "table"]),
+            Relation("cright", ["plant", "table"]),
+        ]),
+    )
+    candidates = SampleSearch().sample_many(spec, 20, seed=42)
+    bottom_spreads = []
+    for result in candidates:
+        bottoms = [y + h for _, y, _, h in result.layout.values()]
+        bottom_spreads.append(max(bottoms) - min(bottoms))
+    assert sum(bottom_spreads) / len(bottom_spreads) < 180
+
+
 def test_layout_visualization_renders_single_and_grid_svg():
     spec = Spec([Obj("a", "new", "chair")], Default("a"))
     result = SampleSearch().sample(spec, seed=2)
