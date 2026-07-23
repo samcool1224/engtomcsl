@@ -18,6 +18,8 @@ from .layout_viz import render_layout_svg, save_svg
 from .local_debug import ParseTiming, parse_with_repair
 from .object_plan import extract_new_objects
 from .samplesearch import SampleResult, SampleSearch
+from .scene_quality import LayoutSelection, select_best_layout
+from .image_generation import grounded_color_fidelity
 from .z3_backend import Z3Backend
 
 
@@ -29,6 +31,7 @@ class ScenePlan:
     spec: Spec
     resolution_log: Optional[ResolutionLog]
     sample: SampleResult
+    layout_selection: LayoutSelection
     grounding: GroundedScene
     parse_timing: ParseTiming
     object_extraction_time_s: float
@@ -43,6 +46,8 @@ class EnglishToImageResult:
     image: Any
     image_time_s: float
     generation_config: Dict[str, Any] = field(default_factory=dict)
+    image_candidates: List[Dict[str, Any]] = field(default_factory=list)
+    selected_image_index: int = 0
 
     @property
     def timings(self) -> Dict[str, float]:
@@ -74,7 +79,8 @@ class EnglishToImageSystem:
 
     def plan(self, english: str, *, oracle: Optional[Oracle] = None,
              question_budget: int = 3, layout_seed: int = 0,
-             style_prompt: Optional[str] = None) -> ScenePlan:
+             style_prompt: Optional[str] = None,
+             layout_candidate_count: int = 1) -> ScenePlan:
         started = time.perf_counter()
         phase_started = time.perf_counter()
         objects = self.object_extractor(english)
@@ -90,7 +96,12 @@ class EnglishToImageSystem:
         else:
             spec, resolution_log = resolve(spec, oracle, budget=question_budget)
         ambiguity_resolution_time_s = time.perf_counter() - phase_started
-        sample = self.sampler.sample(spec, seed=layout_seed)
+        if layout_candidate_count <= 0:
+            raise ValueError("layout_candidate_count must be positive")
+        candidates = self.sampler.sample_many(
+            spec, layout_candidate_count, seed=layout_seed
+        )
+        sample, layout_selection = select_best_layout(spec, candidates)
         phase_started = time.perf_counter()
         grounding = layout_to_grounded_scene(spec, sample.layout, english, style_prompt)
         grounding_time_s = time.perf_counter() - phase_started
@@ -101,6 +112,7 @@ class EnglishToImageSystem:
             spec=spec,
             resolution_log=resolution_log,
             sample=sample,
+            layout_selection=layout_selection,
             grounding=grounding,
             parse_timing=parse_timing,
             object_extraction_time_s=object_extraction_time_s,
@@ -111,16 +123,45 @@ class EnglishToImageSystem:
 
     def generate(self, english: str, *, oracle: Optional[Oracle] = None,
                  question_budget: int = 3, layout_seed: int = 0, image_seed: int = 0,
-                 style_prompt: Optional[str] = None, **image_kwargs) -> EnglishToImageResult:
+                 style_prompt: Optional[str] = None,
+                 layout_candidate_count: int = 1,
+                 image_candidate_count: int = 1,
+                 **image_kwargs) -> EnglishToImageResult:
+        if image_candidate_count <= 0:
+            raise ValueError("image_candidate_count must be positive")
         plan = self.plan(
             english,
             oracle=oracle,
             question_budget=question_budget,
             layout_seed=layout_seed,
             style_prompt=style_prompt,
+            layout_candidate_count=layout_candidate_count,
         )
         started = time.perf_counter()
-        image = self.image_generator.generate(plan.grounding, seed=image_seed, **image_kwargs)
+        image_candidates = []
+        for index in range(image_candidate_count):
+            candidate_seed = int(image_seed) + index
+            candidate_started = time.perf_counter()
+            candidate_image = self.image_generator.generate(
+                plan.grounding, seed=candidate_seed, **image_kwargs
+            )
+            candidate_time_s = time.perf_counter() - candidate_started
+            color_score, color_details = grounded_color_fidelity(
+                candidate_image, plan.grounding, plan.spec
+            )
+            image_candidates.append({
+                "index": index,
+                "seed": candidate_seed,
+                "image": candidate_image,
+                "color_fidelity": color_score,
+                "color_details": color_details,
+                "generation_time_s": candidate_time_s,
+            })
+        selected_image_index = max(
+            range(len(image_candidates)),
+            key=lambda index: image_candidates[index]["color_fidelity"],
+        )
+        image = image_candidates[selected_image_index]["image"]
         image_time_s = time.perf_counter() - started
         generation_config = {
             "parser_backend": type(self.parser_backend).__name__,
@@ -130,14 +171,20 @@ class EnglishToImageSystem:
             "sampler": type(self.sampler).__name__,
             "preference_model": type(self.sampler.preference).__name__,
             "layout_seed": int(layout_seed),
+            "layout_candidate_count": int(layout_candidate_count),
             "question_budget": int(question_budget),
             "style_prompt": style_prompt,
             "image_generator": type(self.image_generator).__name__,
             "image_model": getattr(self.image_generator, "model_id", None),
             "image_seed": int(image_seed),
+            "image_candidate_count": int(image_candidate_count),
             "image_parameters": dict(image_kwargs),
         }
-        return EnglishToImageResult(plan, image, image_time_s, generation_config)
+        return EnglishToImageResult(
+            plan, image, image_time_s, generation_config,
+            image_candidates=image_candidates,
+            selected_image_index=selected_image_index,
+        )
 
 
 def _package_versions() -> Dict[str, Optional[str]]:
@@ -227,6 +274,7 @@ def build_run_record(result: EnglishToImageResult, *,
             "exact_z3_verification": verified,
             "search_stats": asdict(plan.sample.stats),
             "search_trace_event_count": len(plan.sample.trace),
+            "selection": plan.layout_selection.as_dict(),
         },
         "grounding": {
             "prompt": plan.grounding.prompt,
@@ -237,6 +285,14 @@ def build_run_record(result: EnglishToImageResult, *,
         "image": {
             "width": image_size[0] if image_size else None,
             "height": image_size[1] if image_size else None,
+            "selected_candidate_index": result.selected_image_index,
+            "candidates": [
+                {
+                    key: value for key, value in candidate.items()
+                    if key != "image"
+                }
+                for candidate in result.image_candidates
+            ],
         },
         "timings_seconds": dict(result.timings),
         "parser_diagnostics": asdict(plan.parse_timing),
@@ -290,6 +346,12 @@ def format_run_report(record: Mapping[str, Any]) -> str:
     for key, value in layout["search_stats"].items():
         lines.append(f"    {key}: {value}")
     lines.append(f"    trace_events: {layout['search_trace_event_count']}")
+    selection = layout["selection"]
+    lines.append("  aesthetic selection:")
+    lines.append(f"    candidates: {selection['candidate_count']}")
+    lines.append(f"    selected_index: {selection['selected_index']}")
+    for key, value in selection["selected_quality"].items():
+        lines.append(f"    {key}: {value:.6f}")
 
     grounding = record["grounding"]
     lines.extend(("", "IMAGE GROUNDING", f"  prompt: {grounding['prompt']}"))
@@ -301,7 +363,15 @@ def format_run_report(record: Mapping[str, Any]) -> str:
     image = record["image"]
     lines.extend(("", "GENERATED IMAGE",
                   f"  size: {image['width']} x {image['height']} pixels",
+                  f"  selected candidate: {image['selected_candidate_index']}",
                   "", "TIMINGS"))
+    for candidate in image["candidates"]:
+        lines.append(
+            "  candidate "
+            f"{candidate['index']}: seed={candidate['seed']}, "
+            f"color_fidelity={candidate['color_fidelity']:.6f}, "
+            f"generation_time_s={candidate['generation_time_s']:.4f}"
+        )
     for key, value in record["timings_seconds"].items():
         lines.append(f"  {key}: {value:.4f}s")
 
@@ -339,6 +409,12 @@ def save_run_bundle(result: EnglishToImageResult, directory: str,
         "report_txt": str(output_dir / f"{prefix}_report.txt"),
     }
     result.image.save(paths["image_png"])
+    for candidate in result.image_candidates:
+        candidate_path = str(
+            output_dir / f"{prefix}_candidate_{candidate['index']}_seed_{candidate['seed']}.png"
+        )
+        candidate["image"].save(candidate_path)
+        paths[f"candidate_{candidate['index']}_png"] = candidate_path
     save_svg(render_layout_svg(result.plan.spec, result.plan.sample.layout),
              paths["layout_svg"])
     record = build_run_record(result, output_paths=paths)
