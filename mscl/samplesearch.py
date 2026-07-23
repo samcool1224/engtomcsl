@@ -21,7 +21,7 @@ import secrets
 import time
 from typing import Dict, List, Mapping, Optional, Protocol, Sequence, Tuple
 
-from .ast import Obj, Spec
+from .ast import And, Not, Obj, Or, Relation, Spec
 from .feasibility import Layout
 from .profile import COORD_MAX, COORD_MIN
 from .validate import assert_resolved
@@ -116,6 +116,17 @@ class GeometricPreference:
         if prim == "h":
             return float(typical_h), self.size_sigma
 
+        relational_target = self._relational_target(
+            spec, obj, prim, assigned, typical_w, typical_h
+        )
+        if relational_target is not None:
+            extent = assigned.get(
+                (obj.id, "w" if prim == "x" else "h"),
+                typical_w if prim == "x" else typical_h,
+            )
+            target = max(0.0, min(COORD_MAX - extent, relational_target))
+            return target, min(self.position_sigma, 40.0)
+
         new_objects = [o for o in spec.objects if o.status == "new"]
         index = next((i for i, o in enumerate(new_objects) if o.id == obj.id), 0)
         ax, ay = _ANCHORS[index % len(_ANCHORS)]
@@ -124,6 +135,50 @@ class GeometricPreference:
             return max(0.0, min(COORD_MAX - width, ax * COORD_MAX - width / 2)), self.position_sigma
         height = assigned.get((obj.id, "h"), typical_h)
         return max(0.0, min(COORD_MAX - height, ay * COORD_MAX - height / 2)), self.position_sigma
+
+    def _relational_target(self, spec: Spec, obj: Obj, prim: str,
+                           assigned: Mapping[Variable, int],
+                           typical_w: int, typical_h: int) -> Optional[float]:
+        """Favor compact alignment for explicitly related objects.
+
+        This is a soft preference only. Z3 still owns the exact relation, and a
+        missing/not-yet-assigned reference falls back to the generic anchor.
+        """
+        width = assigned.get((obj.id, "w"), typical_w)
+        height = assigned.get((obj.id, "h"), typical_h)
+        gap = 35.0
+        for relation in _positive_relations(spec.formula):
+            if len(relation.args) != 2 or obj.id not in relation.args:
+                continue
+            first_id, second_id = relation.args
+            other_id = second_id if obj.id == first_id else first_id
+            other = _known_box(spec, other_id, assigned)
+            if other is None:
+                continue
+            ox, oy, ow, oh = other
+            obj_is_first = obj.id == first_id
+
+            if relation.name in ("cleft", "cright"):
+                if prim == "y":
+                    return oy + oh - height
+                if prim == "x":
+                    if relation.name == "cleft":
+                        return ox - gap - width if obj_is_first else ox + ow + gap
+                    return ox + ow + gap if obj_is_first else ox - gap - width
+
+            if relation.name in ("cabove", "cbelow"):
+                if prim == "x":
+                    return ox + ow / 2.0 - width / 2.0
+                if prim == "y":
+                    if relation.name == "cabove":
+                        return oy - gap - height if obj_is_first else oy + oh + gap
+                    return oy + oh + gap if obj_is_first else oy - gap - height
+
+            if relation.name in ("left", "right") and prim == "y":
+                return oy + oh - height
+            if relation.name in ("above", "below") and prim == "x":
+                return ox + ow / 2.0 - width / 2.0
+        return None
 
 
 @dataclass
@@ -316,6 +371,27 @@ def _normal_interval_mass(lo: int, hi: int, mean: float, sigma: float) -> float:
     upper = 0.5 * (1.0 + math.erf((hi + 0.5 - mean) / scale))
     lower = 0.5 * (1.0 + math.erf((lo - 0.5 - mean) / scale))
     return max(0.0, upper - lower)
+
+
+def _positive_relations(formula):
+    if isinstance(formula, Relation):
+        yield formula
+    elif isinstance(formula, And):
+        for arg in formula.args:
+            yield from _positive_relations(arg)
+    elif isinstance(formula, (Not, Or)):
+        return
+
+
+def _known_box(spec: Spec, object_id: str,
+               assigned: Mapping[Variable, int]) -> Optional[Tuple[int, int, int, int]]:
+    obj = spec.obj(object_id)
+    if obj.box is not None:
+        return obj.box
+    values = [assigned.get((object_id, prim)) for prim in ("x", "y", "w", "h")]
+    if any(value is None for value in values):
+        return None
+    return tuple(int(value) for value in values)
 
 
 def _weighted_candidate_order(candidates: Sequence[int], weights: Sequence[float],
