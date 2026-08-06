@@ -89,8 +89,19 @@ def test_validate_arity_and_value():
 
 def test_prompt_default_covers_every_choice_kind():
     text = str([x["formula"] for x in _exemplars(DEFAULT_K_SHOT)])
-    for kind in ("direction", "offset", "reference", "unsupported_type"):
+    for kind in ("direction", "offset", "reference", "scope", "unsupported_type"):
         assert f"'kind': '{kind}'" in text
+
+
+def test_adaptive_prompt_covers_scope_without_using_benchmark_examples():
+    objects = [
+        {"id": "e0", "status": "existing", "type": "door", "box": [1, 2, 3, 4]},
+        {"id": "o0", "status": "new", "type": "mirror"},
+        {"id": "o1", "status": "new", "type": "chair"},
+    ]
+    ids = {example["id"] for example in _adaptive_exemplars(
+        "Place a mirror and a chair left of the door.", objects)}
+    assert "ambiguous_scope_coordination" in ids
 
 
 def test_postprocess_repairs_explicit_binary_relation():
@@ -150,6 +161,51 @@ def test_postprocess_emits_full_vague_direction_set():
     out = normalize_prediction(bad, "Put a TV next to the desk.", objects)
     ch = [a for a in out["formula"]["args"] if a.get("kind") == "direction"][0]
     assert {o["formula"]["name"] for o in ch["options"]} == {"cleft", "cright", "cabove", "cbelow"}
+
+
+def test_postprocess_limits_beside_and_alongside_to_horizontal_options():
+    objects = [{"id": "e0", "status": "existing", "type": "desk", "box": [1, 2, 3, 4]},
+               {"id": "o0", "status": "new", "type": "chair"}]
+    for english in ("Place a chair beside the desk.", "Place a chair alongside the desk."):
+        out = normalize_prediction(
+            {"formula": _rel_for_test("above", ["o0", "e0"], None)}, english, objects)
+        ch = [a for a in out["formula"]["args"] if a.get("kind") == "direction"][0]
+        assert {o["formula"]["name"] for o in ch["options"]} == {"cleft", "cright"}
+
+
+def test_postprocess_preserves_complete_relation_inside_reference_choice():
+    objects = [{"id": "e0", "status": "existing", "type": "bed", "box": [1, 2, 3, 4]},
+               {"id": "e1", "status": "existing", "type": "bed", "box": [5, 6, 7, 8]},
+               {"id": "o0", "status": "new", "type": "TV"}]
+    out = normalize_prediction(
+        {"formula": _rel_for_test("right", ["o0", "e0"], None)},
+        "Position a TV completely right of the bed.", objects)
+    ch = [a for a in out["formula"]["args"] if a.get("kind") == "reference"][0]
+    assert {o["formula"]["name"] for o in ch["options"]} == {"cright"}
+
+
+def test_postprocess_recovers_short_explicit_relations_for_multiple_verbs():
+    objects = [{"id": "e0", "status": "existing", "type": "window", "box": [1, 2, 3, 4]},
+               {"id": "o0", "status": "new", "type": "mirror"}]
+    bad = {"formula": {"node": "default", "obj": "o0"}}
+    above = normalize_prediction(bad, "Add a mirror above the window.", objects)
+    aligned = normalize_prediction(bad, "Vertically align the mirror with the window.", objects)
+    assert _rel_for_test("above", ["o0", "e0"], None) in above["formula"]["args"]
+    assert _rel_for_test("xeq", ["o0", "e0"], None) in aligned["formula"]["args"]
+
+
+def test_postprocess_emits_coordination_scope_choice():
+    objects = [{"id": "e0", "status": "existing", "type": "oven", "box": [1, 2, 3, 4]},
+               {"id": "o0", "status": "new", "type": "sink"},
+               {"id": "o1", "status": "new", "type": "blender"}]
+    bad = {"formula": {"node": "and", "args": [
+        _rel_for_test("above", ["o0", "e0"], None),
+        _rel_for_test("above", ["o1", "e0"], None),
+    ]}}
+    out = normalize_prediction(bad, "Add a sink and a blender above the oven.", objects)
+    choices = [a for a in out["formula"]["args"] if a.get("kind") == "scope"]
+    assert len(choices) == 1
+    assert {option["formula"]["node"] for option in choices[0]["options"]} == {"and", "rel"}
 
 
 def test_postprocess_wraps_duplicate_references_in_choice():
