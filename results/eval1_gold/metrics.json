@@ -1,1 +1,163 @@
-
+{
+  "ambiguity_detection": {
+    "f1": 1.0,
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "tp": 32
+  },
+  "by_choice_kind": {
+    "direction": {
+      "choice_detection": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 8
+      },
+      "exact_option_set_accuracy": 1.0,
+      "gold_choices": 8,
+      "intended_option_coverage": 1.0,
+      "intended_options": 8,
+      "option_set": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 26
+      },
+      "pred_choices": 8
+    },
+    "offset": {
+      "choice_detection": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 6
+      },
+      "exact_option_set_accuracy": 1.0,
+      "gold_choices": 6,
+      "intended_option_coverage": 1.0,
+      "intended_options": 6,
+      "option_set": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 12
+      },
+      "pred_choices": 6
+    },
+    "reference": {
+      "choice_detection": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 6
+      },
+      "exact_option_set_accuracy": 1.0,
+      "gold_choices": 6,
+      "intended_option_coverage": 1.0,
+      "intended_options": 6,
+      "option_set": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 12
+      },
+      "pred_choices": 6
+    },
+    "scope": {
+      "choice_detection": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 6
+      },
+      "exact_option_set_accuracy": 1.0,
+      "gold_choices": 6,
+      "intended_option_coverage": 1.0,
+      "intended_options": 6,
+      "option_set": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 12
+      },
+      "pred_choices": 6
+    },
+    "unsupported_type": {
+      "choice_detection": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 6
+      },
+      "exact_option_set_accuracy": 1.0,
+      "gold_choices": 6,
+      "intended_option_coverage": 1.0,
+      "intended_options": 6,
+      "option_set": {
+        "f1": 1.0,
+        "fn": 0,
+        "fp": 0,
+        "precision": 1.0,
+        "recall": 1.0,
+        "tp": 18
+      },
+      "pred_choices": 6
+    }
+  },
+  "choice_emission_recall": 1.0,
+  "choice_node_detection": {
+    "f1": 1.0,
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "tp": 32
+  },
+  "choice_option_set": {
+    "f1": 1.0,
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "tp": 80
+  },
+  "correct_choice_behavior_rate": 1.0,
+  "exact_choice_construction_rate": 1.0,
+  "false_choice_rate_on_unambiguous": 0.0,
+  "hard_skeleton": {
+    "f1": 1.0,
+    "fn": 0,
+    "fp": 0,
+    "precision": 1.0,
+    "recall": 1.0,
+    "tp": 114
+  },
+  "intended_option_coverage": 1.0,
+  "intended_options": 32,
+  "n_examples": 44,
+  "parse_errors": 0,
+  "potential_false_questions_per_unambiguous_prompt": 0.0,
+  "structural_mscl_accuracy": 1.0,
+  "unambiguous_accuracy": 1.0,
+  "valid_mscl_rate": 1.0
+}
