@@ -1,3 +1,6 @@
+
+
+
 """Deterministic normalization for model-produced MSCL JSON.
 
 The LLM is responsible for semantic parsing, but a few parts of the input contract are
@@ -21,8 +24,10 @@ def _is_atomic_instruction(english: str) -> bool:
     if ", with " in lo:
         tail = lo.split(", with ", 1)[1]
         return "," not in tail and " and " not in tail
-    # The ambiguous generators use a single "Put X ..." clause.
-    return lo.startswith("put ") and "," not in lo and " and " not in lo
+    # Do not key this decision to one imperative verb ("put"). Real instructions also use
+    # add/place/set/position/align/make. Punctuation and coordination, not the leading verb,
+    # determine whether this conservative one-relation repair is applicable.
+    return "," not in lo and ";" not in lo and " and " not in lo
 
 
 def _rel(name: str, args: List[str], const=None) -> dict:
@@ -77,7 +82,10 @@ def _ensure_unsupported_choice(args: List[dict], english: str,
     unknown = [o for o in objects if o.get("status") == "new" and o.get("type") is None]
     if len(unknown) != 1:
         return args
-    m = re.search(r"\b(?:put|add)\s+(?:a|an)\s+([a-z][a-z-]*)\b", english.lower())
+    m = re.search(
+        r"\b(?:put|add|place|position|set|move|create)\s+(?:a|an)\s+([a-z][a-z-]*)\b",
+        english.lower(),
+    )
     if not m:
         return args
     word, oid = m.group(1), unknown[0]["id"]
@@ -103,7 +111,9 @@ def _single_explicit_relation(english: str, objects: List[dict]) -> Optional[dic
     """
     if not _is_atomic_instruction(english):
         return None
-    new = [o for o in objects if o.get("status") == "new" and o.get("type")]
+    # The object's id is sufficient for a spatial relation. Its type may intentionally be
+    # absent when a separate unsupported_type CHOICE is required.
+    new = [o for o in objects if o.get("status") == "new"]
     old = [o for o in objects if o.get("status") == "existing"]
     if len(new) != 1 or len(old) != 1:
         return None
@@ -130,9 +140,9 @@ def _single_explicit_relation(english: str, objects: List[dict]) -> Optional[dic
     for word in ("wider", "narrower", "taller", "shorter"):
         if re.search(rf"\b{word}\s+than\s+(?:an?|the)\b", lo):
             return _rel(word, [a, b])
-    if "horizontally aligned" in lo:
+    if re.search(r"\bhorizontally\s+align(?:ed)?\b", lo):
         return _rel("yeq", [a, b])
-    if "vertically aligned" in lo:
+    if re.search(r"\bvertically\s+align(?:ed)?\b", lo):
         return _rel("xeq", [a, b])
     if "same width" in lo:
         return _rel("weq", [a, b])
@@ -235,7 +245,9 @@ def _explicit_ambiguity(english: str, objects: List[dict]) -> Optional[dict]:
                 word = next((w for w in ("left", "right", "above", "below")
                              if re.search(rf"\b{w}\b", lo)), None)
                 if word:
-                    name = word
+                    complete = bool(re.search(
+                        rf"\b(?:completely|fully)\b[^,.]*\b{word}\b", lo))
+                    name = _COMPLETE[word] if complete else word
                     return _choice("reference", f"the {typ}",
                                    [_rel(name, [a, oid]) for oid in candidates],
                                    [1.0 / len(candidates)] * len(candidates))
@@ -253,14 +265,60 @@ def _explicit_ambiguity(english: str, objects: List[dict]) -> Optional[dict]:
                            [_rel(name, [a, b], 0), _rel(name, [a, b], 300)],
                            [0.4, 0.6], emphasis=True)
 
-    vague = re.search(r"\b(near|next to|beside)\b|\b(by)\s+the\b", lo)
+    vague = re.search(r"\b(near|next to|beside|alongside)\b|\b(by)\s+the\b", lo)
     if vague:
         phrase = (vague.group(1) or vague.group(2)).strip()
         span = f"{phrase} the {old[0].get('type')}"
-        names = ["cabove", "cbelow", "cright", "cleft"]
+        # Beside/alongside explicitly select a horizontal side. Near/by/next-to leave all
+        # four cardinal placements open in the current MSCL-SPRING profile.
+        names = (["cleft", "cright"] if phrase in {"beside", "alongside"}
+                 else ["cleft", "cright", "cabove", "cbelow"])
         return _choice("direction", span, [_rel(n, [a, b]) for n in names],
-                       [0.25, 0.25, 0.25, 0.25])
+                       [1.0 / len(names)] * len(names))
     return None
+
+
+def _scope_ambiguity(english: str, objects: List[dict]) -> Optional[dict]:
+    """Recognize coordination whose trailing relation has two possible scopes.
+
+    In ``a chair and a couch left of the TV``, the relation can modify the whole coordinated
+    phrase or only the nearest conjunct. This uses only the authoritative object plan and an
+    overt syntactic cue; it does not consult benchmark labels or guess latent intent.
+    """
+    new = [o for o in objects if o.get("status") == "new" and o.get("type")]
+    old = [o for o in objects if o.get("status") == "existing" and o.get("type")]
+    if len(new) < 2 or len(old) != 1:
+        return None
+
+    lo = english.lower().rstrip(". ")
+    cue = re.search(
+        r"\b(?:(completely|fully)\s+(?:to\s+the\s+)?)?"
+        r"(left|right|above|below)(?:\s+of)?\b",
+        lo,
+    )
+    if cue is None or str(old[0]["type"]).lower() not in lo[cue.end():]:
+        return None
+
+    prefix = lo[:cue.start()]
+    mentions = []
+    for obj in new:
+        typ = str(obj["type"]).lower()
+        hits = list(re.finditer(rf"(?<![a-z0-9-]){re.escape(typ)}(?![a-z0-9-])", prefix))
+        if hits:
+            mentions.append((hits[-1].start(), hits[-1].end(), obj["id"]))
+    mentions.sort()
+    if len(mentions) < 2:
+        return None
+    previous, nearest = mentions[-2], mentions[-1]
+    if not re.search(r"\band\b", prefix[previous[1]:nearest[0]]):
+        return None
+
+    name = _COMPLETE[cue.group(2)] if cue.group(1) else cue.group(2)
+    subject_ids = [mention[2] for mention in mentions]
+    all_relations = [_rel(name, [oid, old[0]["id"]]) for oid in subject_ids]
+    both = {"node": "and", "args": all_relations}
+    nearest_only = all_relations[-1]
+    return _choice("scope", english.strip().rstrip("."), [both, nearest_only], [0.5, 0.5])
 
 
 def normalize_prediction(spec_json: Dict, english: str, objects: List[dict]) -> Dict:
@@ -270,7 +328,7 @@ def normalize_prediction(spec_json: Dict, english: str, objects: List[dict]) -> 
     args = _strip_and_restore_boilerplate(args, objects)
     args = _ensure_unsupported_choice(args, english, objects)
 
-    ambiguity = _explicit_ambiguity(english, objects)
+    ambiguity = _scope_ambiguity(english, objects) or _explicit_ambiguity(english, objects)
     if ambiguity is not None:
         # For the diagnostic's atomic ambiguity templates, replace model guesses/duplicate
         # relations with the cue-determined CHOICE. Preserve unsupported-type CHOICE nodes.
