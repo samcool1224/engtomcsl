@@ -40,10 +40,16 @@ THE ONLY LEGAL OBJECT TYPES (use these EXACT strings, including spaces and capit
        {"prior":0.5,"formula":{"node":"type","obj":"o0","type":"potted plant"}},
        {"prior":0.3,"formula":{"node":"type","obj":"o0","type":"mirror"}},
        {"prior":0.2,"formula":null,"skip":true}]}
+  Choose nearest types by visual role, geometry, and likely placement--not spelling overlap.
+  Useful closed-profile analogies include flat wall decor -> mirror/window; tall storage or
+  shelving -> refrigerator/desk; small tabletop decor or containers -> potted plant/blender;
+  wide low or soft floor objects -> dining table/couch. These are renderer-compatible
+  approximations, not claims that the object types are synonyms.
 
 EMIT A CHOICE WHENEVER THE ENGLISH IS AMBIGUOUS — do NOT silently pick one reading:
-- Vague direction ("by", "near", "next to", "beside" the X): kind "direction", 3-4 options over
-  cleft/cright/cabove/cbelow. Do NOT emit a plain relation for these words; do NOT use "or".
+- Vague direction ("by", "near", "next to", "beside", "alongside" the X): kind "direction".
+  "beside" and "alongside" mean the two horizontal options cleft/cright; the other vague cues
+  use all four cardinal options. Do NOT emit a plain relation for these words; do NOT use "or".
 - Emphasized distance — the words "well", "far", "way" before a direction (e.g. "WELL to the left",
   "FAR above", "well below"): kind "offset", "emphasis":true, exactly TWO options over the SAME
   relation: one with "const":0 and one with a larger "const" (e.g. 300). NEVER just pick a number
@@ -51,6 +57,10 @@ EMIT A CHOICE WHENEVER THE ENGLISH IS AMBIGUOUS — do NOT silently pick one rea
 - "the X" when TWO OR MORE detected objects have type X: kind "reference", options are the same
   relation applied to each candidate object id (e.g. cleft to e0 vs cleft to e1). If you find two
   matching objects, you MUST wrap them in a reference CHOICE — never AND them together.
+- Coordination scope: when one trailing relation can modify either the whole coordinated noun
+  phrase or only its nearest member (e.g. "a chair and a couch left of the TV"), emit kind
+  "scope" with exactly TWO options: (1) an AND applying the relation to both new objects and
+  (2) the relation applied only to the nearest/second new object. Do not silently choose a scope.
 Each CHOICE has 2+ options with a "prior" per option (priors sum to ~1) and a "span" (the source words).
 Use the minimal ambiguity span: offset -> just "well"/"far"/"way"; reference -> "the X";
 direction -> the vague phrase plus its object (for example "near the desk"). Never add a SKIP
@@ -62,6 +72,8 @@ wider narrower taller shorter xeq yeq weq heq, plus the *_value forms (e.g. righ
 - WITHOUT "completely" or "fully", use the partial form: left/right/above/below. An explicit
   numeric offset ("by 227 per-mille") does NOT make a relation complete.
 - "horizontally aligned" -> yeq (same y); "vertically aligned" -> xeq (same x).
+- Preserve every explicit relation. Words such as above, below, align, and a numeric "by N
+  per-mille" offset must never disappear merely because the sentence is short.
 - A comparison against AN OBJECT is binary: "shorter than a chair" -> shorter(o, chair).
   Use a unary *_value relation only against a NUMBER or image coordinate/size threshold.
 - The *_value forms are RELATIONS, not properties. "taller than 282 per-mille" ->
@@ -81,7 +93,8 @@ def _exemplars(k: int = DEFAULT_K_SHOT) -> List[dict]:
     """Return a DIVERSE, coverage-guaranteed exemplar set. Few-shot models imitate examples
     far more than prose rules, so we ensure each key pattern is demonstrated at least once:
     an unambiguous multi-object, a *_value relation, an offset-emphasis CHOICE, a direction
-    CHOICE, a reference CHOICE, and an unsupported_type CHOICE (as many as k allows)."""
+    CHOICE, a reference CHOICE, a scope CHOICE, and an unsupported_type CHOICE
+    (as many as k allows)."""
     pairs = json.load(open(os.path.join(HERE, "..", "examples", "seed_pairs.json")))["pairs"]
     by_id = {p["id"]: p for p in pairs}
     # priority coverage order (id -> what it teaches)
@@ -91,7 +104,10 @@ def _exemplars(k: int = DEFAULT_K_SHOT) -> List[dict]:
         "value_relation_example",              # *_value are relations not properties (P4)
         "ambiguous_lamp_by_couch",             # direction + unsupported_type CHOICE
         "ambiguous_reference_example",         # 2 same-type -> reference CHOICE (P2)
+        "ambiguous_scope_coordination",        # coordination attachment -> scope CHOICE
         "ambiguous_unsupported_clock",         # unsupported_type CHOICE
+        "simple_explicit_relation",            # short imperative retains its relation
+        "simple_alignment_relation",           # align/xeq/yeq syntax
         "fig8_chair_couch_coffeetable",        # more unambiguous relations
     ]
     picked = [by_id[i] for i in preferred if i in by_id][:k]
@@ -141,8 +157,12 @@ def _adaptive_exemplars(english: str, objects: List[dict],
         add("synthetic_multi_object_binding")
     if re.search(r"\b(well|far|way)\b", lo):
         add("ambiguous_offset_emphasis")
-    if re.search(r"\b(near|next to|beside)\b|\bby\s+the\b", lo):
+    if re.search(r"\b(near|next to|beside|alongside)\b|\bby\s+the\b", lo):
         add("ambiguous_lamp_by_couch")
+    new_typed = [o for o in objects if o.get("status") == "new" and o.get("type")]
+    if (len(new_typed) >= 2 and " and " in lo
+            and re.search(r"\b(?:left|right|above|below)(?:\s+of)?\b", lo)):
+        add("ambiguous_scope_coordination")
     if any(o.get("status") == "new" and o.get("type") is None for o in objects):
         add("ambiguous_unsupported_clock")
     existing_types = [o.get("type") for o in objects if o.get("status") == "existing"]
@@ -152,8 +172,10 @@ def _adaptive_exemplars(english: str, objects: List[dict],
     if (re.search(r"\b(?:wider|narrower|taller|shorter) than \d+", lo)
             or "half of the image" in lo or "part of the image" in lo):
         add("value_relation_example")
-    if re.search(r"\b(?:aligned|same width|same height|wider|narrower|taller|shorter)\b", lo):
-        add("fig8_chair_couch_coffeetable")
+    if re.search(r"\b(?:align(?:ed)?|same width|same height|wider|narrower|taller|shorter)\b", lo):
+        add("simple_alignment_relation")
+    elif re.search(r"\b(?:left|right|above|below)\b", lo):
+        add("simple_explicit_relation")
 
     return [by_id[i] for i in ids[:max_k]]
 
